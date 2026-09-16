@@ -42,8 +42,10 @@ yourself.
 2. `dots install` — clones the org under `~/.local/share/equisdots` and places
    the user payload (Hyprland config + scripts, shell, palettes, engines,
    timex UI).
-3. `dots doctor` — verifies binaries and installed paths. Build the wallpaper
-   daemon with `scripts/install-xwww.sh` if `xwww-daemon` is missing.
+3. `dots doctor` — verifies binaries and installed paths. The xwww wallpaper
+   daemon (fork of awww) is built by `dots system`; the standalone builder is
+   `scripts/install-xwww.sh` (set `FORCE_XWWW=1` on the hyprland installer to
+   rebuild an existing one).
 
 ## Remote install
 
