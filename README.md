@@ -22,8 +22,9 @@ Repos are cloned under `~/.local/share/equisdots/<repo>`.
 ```sh
 git clone https://github.com/equisdots/dots.git
 cd dots
-./dots doctor      # check dependencies and paths
+./dots system      # packages, fonts, SDDM theme, PAM, external configs (sudo)
 ./dots install     # clone/update every repo and place it
+./dots doctor      # check dependencies and paths
 ./dots list        # repo status (clean / dirty / missing)
 ./dots update      # pull everything and re-apply
 ./dots uninstall   # remove the created links only
@@ -32,6 +33,17 @@ cd dots
 `install` never deletes your live config: it copies over it and keeps your
 `settings.json` untouched. For a full purge you must remove `~/.config/hypr`
 yourself.
+
+### Fresh machine
+
+1. `dots system` — runs `equisdots/hyprland`'s installer: distro packages,
+   Hack Nerd Font, SDDM theme, `/etc/pam.d/quickshell`, kitty/nvim/starship
+   configs from their repos. Asks for sudo.
+2. `dots install` — clones the org under `~/.local/share/equisdots` and places
+   the user payload (Hyprland config + scripts, shell, palettes, engines,
+   timex UI).
+3. `dots doctor` — verifies binaries and installed paths. Build the wallpaper
+   daemon with `scripts/install-xwww.sh` if `xwww-daemon` is missing.
 
 ## Remote install
 
