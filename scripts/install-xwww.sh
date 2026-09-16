@@ -2,7 +2,8 @@
 # Install xwww (fork of awww with extra transitions): checksum-verified
 # prebuilt release for this arch, with a source-build fallback.
 # Requires: curl, tar and sudo; rust/cargo only for the fallback build.
-# Binaries land in /usr/local/bin (client `xwww`, daemon `xwww-daemon`).
+# Installs only the two binaries davincix uses (client `xwww` and daemon
+# `xwww-daemon`) in /usr/local/bin.
 # Env: XWWW_VERSION overrides the release tag (default v0.12.1).
 set -euo pipefail
 
@@ -39,22 +40,6 @@ install_release() {
         return 1
     fi
     sudo install -Dm755 "$d/xwww" "$d/xwww-daemon" /usr/local/bin/
-    if [ -d "$d/man" ]; then
-        sudo install -Dm644 "$d"/man/*.1 /usr/local/share/man/man1/
-    fi
-    if [ -f "$d/completions/xwww.bash" ]; then
-        sudo install -Dm644 "$d/completions/xwww.bash" /usr/local/share/bash-completion/completions/xwww
-    fi
-    if [ -f "$d/completions/_xwww" ]; then
-        sudo install -Dm644 "$d/completions/_xwww" /usr/local/share/zsh/site-functions/_xwww
-    fi
-    if [ -f "$d/completions/xwww.fish" ]; then
-        sudo install -Dm644 "$d/completions/xwww.fish" /usr/local/share/fish/vendor_completions.d/xwww.fish
-    fi
-    if [ -f "$d/contrib/xwww-daemon.service" ]; then
-        sed 's|/usr/bin/xwww-daemon|/usr/local/bin/xwww-daemon|' "$d/contrib/xwww-daemon.service" \
-            | sudo tee /etc/systemd/user/xwww-daemon.service >/dev/null
-    fi
     rm -rf "$tmp"
 }
 
