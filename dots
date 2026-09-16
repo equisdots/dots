@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# ═══════════════════════════════════════════════════════════════════════════
+# equisdots · dots — meta installer and updater for the equisdots stack
+#
+# Manages the whole org desktop: palettes, theme-sync, davincix, shell and
+# hyprland. Repos are cloned under ~/.local/share/equisdots and their files
+# are placed (or linked) into ~/.config and ~/.local/bin.
+#
+# Usage: dots <command>
+#   install    clone/update every repo and place it in your system
+#   update     git pull every repo and re-apply
+#   doctor     check dependencies and installed paths
+#   list       show repo status (present / missing / dirty)
+#   uninstall  remove links (config files are kept; see README)
+# ═══════════════════════════════════════════════════════════════════════════
+set -euo pipefail
+
+ORG="equisdots"
+BASE="${XDG_DATA_HOME:-$HOME/.local/share}/equisdots"
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
+HYPR="$CFG/hypr"
+QS="$HYPR/scripts/quickshell"
+BIN="$HOME/.local/bin"
+REPOS=(palettes theme-sync davincix shell hyprland)
+
+msg()  { printf '\033[1;34m::\033[0m %s\n' "$*"; }
+ok()   { printf '\033[1;32m ✓\033[0m %s\n' "$*"; }
+die()  { printf '\033[1;31m error:\033[0m %s\n' "$*" >&2; exit 1; }
+
+fetch_repo() {
+    local name="$1"
+    if [[ -d "$BASE/$name/.git" ]]; then
+        git -C "$BASE/$name" pull --ff-only --quiet && ok "$name updated"
+    else
+        mkdir -p "$BASE"
+        git clone --depth 1 "https://github.com/$ORG/$name.git" "$BASE/$name" --quiet && ok "$name cloned"
+    fi
+}
+
+sync_repo() {
+    local name="$1"
+    case "$name" in
+        hyprland)
+            msg "hyprland: config -> $HYPR"
+            mkdir -p "$HYPR"
+            rsync -a --exclude 'docs/' --exclude '.git*' "$BASE/hyprland/config/hypr/" "$HYPR/" ;;
+        shell)
+            msg "shell: quickshell -> $QS"
+            mkdir -p "$QS"
+            rsync -a --exclude '.git*' --exclude 'docs/' "$BASE/shell/" "$QS/" ;;
+        palettes)
+            msg "palettes -> $QS/dock/palettes"
+            mkdir -p "$QS/dock/palettes"
+            cp -f "$BASE/palettes"/*.json "$QS/dock/palettes/" 2>/dev/null || true ;;
+        theme-sync)
+            mkdir -p "$BIN"
+            ln -sf "$BASE/theme-sync/theme-sync.sh" "$BIN/theme-sync"
+            ok "theme-sync -> $BIN/theme-sync" ;;
+        davincix)
+            mkdir -p "$BIN"
+            ln -sf "$BASE/davincix/davincix.sh" "$BIN/davincix"
+            ok "davincix -> $BIN/davincix" ;;
+    esac
+}
+
+cmd_install() {
+    for r in "${REPOS[@]}"; do fetch_repo "$r"; done
+    for r in "${REPOS[@]}"; do sync_repo "$r"; done
+    ok "installed — restart the shell (qs kill; qs -p $QS/Shell.qml &)"
+}
+
+cmd_update() { cmd_install; }
+
+cmd_list() {
+    printf '%-12s %-10s %s\n' REPO STATE PATH
+    for r in "${REPOS[@]}"; do
+        local state="missing"
+        [[ -d "$BASE/$r/.git" ]] && state=$(git -C "$BASE/$r" status --porcelain | wc -l | xargs -I{} sh -c '[[ {} -eq 0 ]] && echo clean || echo dirty')
+        printf '%-12s %-10s %s\n' "$r" "$state" "$BASE/$r"
+    done
+}
+
+cmd_doctor() {
+    local fail=0
+    for c in git rsync hyprland qs jq; do
+        if command -v "$c" >/dev/null 2>&1; then ok "$c"; else printf '\033[1;33m !\033[0m %s missing\n' "$c"; fail=1; fi
+    done
+    if fc-list : family 2>/dev/null | grep -qi "Hack Nerd Font"; then ok "Hack Nerd Font"; else printf '\033[1;33m !\033[0m Hack Nerd Font missing (glyphs will show as boxes)\n'; fail=1; fi
+    for p in "$HYPR/hyprland.lua" "$QS/Shell.qml" "$HYPR/settings.json"; do
+        [[ -e "$p" ]] && ok "$p" || printf '\033[1;33m !\033[0m %s missing (run: dots install)\n' "$p"
+    done
+    exit $fail
+}
+
+cmd_uninstall() {
+    msg "removing links only; config files are kept (remove ~/.config/hypr manually to purge)"
+    rm -f "$BIN/theme-sync" "$BIN/davincix"
+    ok "done"
+}
+
+case "${1:-help}" in
+    install)   cmd_install ;;
+    update)    cmd_update ;;
+    doctor)    cmd_doctor ;;
+    list)      cmd_list ;;
+    uninstall) cmd_uninstall ;;
+    *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
+esac

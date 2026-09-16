@@ -1,0 +1,43 @@
+# equisdots · dots
+
+Meta installer and updater for the equisdots desktop stack. One command clones
+every repo of the org, places each piece where it belongs and keeps them in
+sync.
+
+## Stack
+
+| Repo | What it provides | Installed to |
+|---|---|---|
+| [hyprland](https://github.com/equisdots/hyprland) | Compositor config (Lua), scripts, installer | `~/.config/hypr` |
+| [shell](https://github.com/equisdots/shell) | Quickshell UI (bar, panels, editor, popups) | `~/.config/hypr/scripts/quickshell` |
+| [palettes](https://github.com/equisdots/palettes) | Color palettes (JSON set + schema) | `.../quickshell/dock/palettes` |
+| [davincix](https://github.com/equisdots/davincix) | Wallpaper fetch/apply kernel | `~/.local/bin/davincix` |
+| [theme-sync](https://github.com/equisdots/theme-sync) | Cross-app theme regeneration | `~/.local/bin/theme-sync` |
+
+Repos are cloned under `~/.local/share/equisdots/<repo>`.
+
+## Usage
+
+```sh
+git clone https://github.com/equisdots/dots.git
+cd dots
+./dots doctor      # check dependencies and paths
+./dots install     # clone/update every repo and place it
+./dots list        # repo status (clean / dirty / missing)
+./dots update      # pull everything and re-apply
+./dots uninstall   # remove the created links only
+```
+
+`install` never deletes your live config: it copies over it and keeps your
+`settings.json` untouched. For a full purge you must remove `~/.config/hypr`
+yourself.
+
+## Requirements
+
+`git`, `rsync`, `jq`, `hyprland` and `quickshell` (`qs`), plus the
+`Hack Nerd Font` family for the UI glyphs. `dots doctor` reports what is
+missing.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
