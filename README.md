@@ -33,6 +33,20 @@ cd dots
 `settings.json` untouched. For a full purge you must remove `~/.config/hypr`
 yourself.
 
+## Remote install
+
+No need to clone first — the script clones the whole org itself:
+
+```sh
+bash <(curl -fsSL https://raw.githubusercontent.com/equisdots/dots/main/dots) install
+bash <(curl -fsSL https://raw.githubusercontent.com/equisdots/dots/main/dots) doctor
+```
+
+The requirements below must already be present. System-level steps that need
+sudo (packages, fonts, SDDM theme, PAM, xwww) are handled by
+[`equisdots/hyprland`](https://github.com/equisdots/hyprland)'s `install.sh`
+or manually.
+
 ## Requirements
 
 `git`, `rsync`, `jq`, `hyprland` and `quickshell` (`qs`), plus:

@@ -33,6 +33,10 @@ fetch_repo() {
         git -C "$BASE/$name" pull --ff-only --quiet && ok "$name updated"
     else
         mkdir -p "$BASE"
+        # Existing non-git copy (manual install): park it instead of failing.
+        if [[ -d "$BASE/$name" && ! -d "$BASE/$name/.git" ]]; then
+            mv "$BASE/$name" "$BASE/$name.pre-dots" && ok "$name: old copy -> $name.pre-dots"
+        fi
         git clone --depth 1 "https://github.com/$ORG/$name.git" "$BASE/$name" --quiet && ok "$name cloned"
     fi
 }
@@ -44,6 +48,13 @@ sync_repo() {
             msg "hyprland: config -> $HYPR"
             mkdir -p "$HYPR"
             rsync -a --exclude 'docs/' --exclude '.git*' "$BASE/hyprland/config/hypr/" "$HYPR/"
+            # app configs shipped by this repo (rofi themes, dunst, cava)
+            for c in rofi dunst cava; do
+                if [[ -d "$BASE/hyprland/config/$c" ]]; then
+                    mkdir -p "$CFG/$c"
+                    rsync -a --exclude '.git*' "$BASE/hyprland/config/$c/" "$CFG/$c/"
+                fi
+            done
             # helper scripts live at the repo root (qs_manager, volume, lock...)
             mkdir -p "$HYPR/scripts"
             rsync -a --exclude '.git*' "$BASE/hyprland/scripts/" "$HYPR/scripts/"
@@ -64,11 +75,21 @@ sync_repo() {
             cp -f "$BASE/palettes"/*.json "$QS/dock/palettes/" 2>/dev/null || true ;;
         theme-sync)
             mkdir -p "$BIN"
-            ln -sf "$BASE/theme-sync/theme-sync.sh" "$BIN/theme-sync"
+            cat > "$BIN/theme-sync" <<WRAP
+#!/usr/bin/env bash
+# equisdots · theme-sync wrapper (engine lives in its own repo)
+exec "$BASE/theme-sync/theme-sync.sh" "\$@"
+WRAP
+            chmod +x "$BIN/theme-sync"
             ok "theme-sync -> $BIN/theme-sync" ;;
         davincix)
             mkdir -p "$BIN"
-            ln -sf "$BASE/davincix/davincix.sh" "$BIN/davincix"
+            cat > "$BIN/davincix" <<WRAP
+#!/usr/bin/env bash
+# equisdots · davincix wrapper (kernel lives in its own repo)
+exec "$BASE/davincix/davincix.sh" "\$@"
+WRAP
+            chmod +x "$BIN/davincix"
             ok "davincix -> $BIN/davincix" ;;
         timex)
             msg "timex: engine -> $BIN/timex + ui -> $QS/ui/timex"
