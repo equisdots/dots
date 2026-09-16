@@ -43,11 +43,21 @@ sync_repo() {
         hyprland)
             msg "hyprland: config -> $HYPR"
             mkdir -p "$HYPR"
-            rsync -a --exclude 'docs/' --exclude '.git*' "$BASE/hyprland/config/hypr/" "$HYPR/" ;;
+            rsync -a --exclude 'docs/' --exclude '.git*' "$BASE/hyprland/config/hypr/" "$HYPR/"
+            # helper scripts live at the repo root (qs_manager, volume, lock...)
+            mkdir -p "$HYPR/scripts"
+            rsync -a --exclude '.git*' "$BASE/hyprland/scripts/" "$HYPR/scripts/"
+            chmod +x "$HYPR/scripts"/*.sh 2>/dev/null || true
+            # seed settings.json only when missing (never overwrite user config)
+            if [[ ! -f "$HYPR/settings.json" && -f "$HYPR/default_settings.json" ]]; then
+                cp "$HYPR/default_settings.json" "$HYPR/settings.json"
+                ok "settings.json seeded from default_settings.json"
+            fi ;;
         shell)
             msg "shell: quickshell -> $QS"
             mkdir -p "$QS"
-            rsync -a --exclude '.git*' --exclude 'docs/' "$BASE/shell/" "$QS/" ;;
+            rsync -a --exclude '.git*' --exclude 'docs/' "$BASE/shell/" "$QS/"
+            find "$QS" -name '*.sh' -exec chmod +x {} + 2>/dev/null || true ;;
         palettes)
             msg "palettes -> $QS/dock/palettes"
             mkdir -p "$QS/dock/palettes"
