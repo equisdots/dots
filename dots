@@ -74,6 +74,10 @@ sync_repo() {
             mkdir -p "$HYPR/scripts"
             rsync -a --exclude '.git*' "$BASE/hyprland/scripts/" "$HYPR/scripts/"
             chmod +x "$HYPR/scripts"/*.sh 2>/dev/null || true
+            # monthly dotfiles check (systemd --user timer, user-level)
+            if [[ -x "$HYPR/scripts/dotfiles-update.sh" ]] && command -v systemctl >/dev/null 2>&1; then
+                bash "$HYPR/scripts/dotfiles-update.sh" --install-timer >/dev/null 2>&1 || true
+            fi
             # seed settings.json only when missing (never overwrite user config)
             if [[ ! -f "$HYPR/settings.json" && -f "$HYPR/default_settings.json" ]]; then
                 cp "$HYPR/default_settings.json" "$HYPR/settings.json"

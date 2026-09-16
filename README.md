@@ -38,7 +38,9 @@ yourself.
 
 1. `dots system` — runs `equisdots/hyprland`'s installer: distro packages,
    Hack Nerd Font, SDDM theme, `/etc/pam.d/quickshell`, kitty/nvim/starship
-   configs from their repos. Asks for sudo.
+   configs from their repos. Asks for sudo. Add `-y` for a fully
+   non-interactive run (recommended defaults; skips the 1.37 GB wallpaper
+   pack, which has a minimal option planned).
 2. `dots install` — clones the org under `~/.local/share/equisdots` and places
    the user payload (Hyprland config + scripts, shell, palettes, engines,
    timex UI).
