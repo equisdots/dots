@@ -13,6 +13,7 @@ sync.
 | [palettes](https://github.com/equisdots/palettes) | Color palettes (JSON set + schema) | `.../quickshell/dock/palettes` |
 | [davincix](https://github.com/equisdots/davincix) | Wallpaper fetch/apply kernel | `~/.local/bin/davincix` |
 | [theme-sync](https://github.com/equisdots/theme-sync) | Cross-app theme regeneration | `~/.local/bin/theme-sync` |
+| [timex](https://github.com/equisdots/timex) | Time & weather engine (providers, calendar popup UI, settings tab) | engine `~/.local/share/equisdots/timex` + `~/.local/bin/timex`; UI → `.../quickshell/ui/timex` |
 
 Repos are cloned under `~/.local/share/equisdots/<repo>`.
 
