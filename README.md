@@ -34,9 +34,15 @@ yourself.
 
 ## Requirements
 
-`git`, `rsync`, `jq`, `hyprland` and `quickshell` (`qs`), plus the
-`Hack Nerd Font` family for the UI glyphs. `dots doctor` reports what is
-missing.
+`git`, `rsync`, `jq`, `hyprland` and `quickshell` (`qs`), plus:
+
+- `xwww-daemon` — wallpaper daemon; use [x-ports/xwww](https://github.com/x-ports/xwww)
+  (fork of awww with the extra transitions) or `./scripts/install-xwww.sh`
+  to build and install it from source
+- `mpvpaper` — video wallpapers (davincix)
+- `Hack Nerd Font` — UI glyphs
+
+`dots doctor` reports what is missing.
 
 ## License
 
