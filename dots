@@ -147,10 +147,11 @@ sync_repo() {
         shell)
             msg "shell: quickshell -> $QS"
             mkdir -p "$QS"
-            # --delete with dock/palettes/ excluded: the shell directory is fully
-            # managed (old xlinux dock/topbar leftovers are purged), but the
-            # frozen palette path survives.
-            rsync -a --delete --exclude '.git*' --exclude 'docs/' --exclude 'dock/palettes/' "$BASE/shell/" "$QS/"
+            # --delete with dock/ excluded: the shell directory is fully managed
+            # (legacy dock/topbar leftovers are purged) but the frozen palette
+            # path (dock/palettes) survives untouched and rsync doesn't warn
+            # trying to delete it.
+            rsync -a --delete --exclude '.git*' --exclude 'docs/' --exclude 'dock/' "$BASE/shell/" "$QS/"
             find "$QS" -name '*.sh' -exec chmod +x {} + 2>/dev/null || true ;;
         palettes)
             msg "palettes -> $QS/dock/palettes"
