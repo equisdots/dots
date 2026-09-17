@@ -23,13 +23,17 @@ Repos are cloned under `~/.local/share/equisdots/<repo>`.
 ```sh
 git clone https://github.com/equisdots/dots.git
 cd dots
+./dots setup       # EVERYTHING: system stack (sudo) + user payload, one run
 ./dots system      # packages, fonts, login theme, PAM, external configs (sudo)
-./dots install     # clone/update every repo and place it
-./dots doctor      # check dependencies and paths
+./dots install     # clone/update every repo and place it (also installs `dots`)
+./dots doctor      # check dependencies, clones and installed paths
 ./dots list        # repo status (clean / dirty / missing)
 ./dots update      # pull everything and re-apply
-./dots uninstall   # remove the created links only
+./dots uninstall   # remove the created links and the updater timer
 ```
+
+`dots install` also drops a `~/.local/bin/dots` wrapper, so after the first
+run the `dots` command is available from anywhere.
 
 `install` never deletes your live config: it copies over it and keeps your
 `settings.json` untouched. For a full purge you must remove `~/.config/hypr`
@@ -37,17 +41,31 @@ yourself.
 
 ### Fresh machine
 
-1. `dots system` — runs `equisdots/hyprland`'s installer: distro packages,
-   Hack Nerd Font, login theme (clones `equisdots/login` on demand),
-   `/etc/pam.d/quickshell`, kitty/nvim/starship
+One command (recommended):
+
+```sh
+bash <(curl -fsSL https://raw.githubusercontent.com/equisdots/dots/main/dots) setup -y
+```
+
+This runs the system stack (distro packages, Hack Nerd Font, login theme,
+`/etc/pam.d/quickshell`, kitty/nvim/starship configs; asks for sudo) and then
+the user payload (Hyprland config + scripts, shell, palettes, engines, timex
+UI), leaving a complete desktop. `-y` uses the recommended defaults and skips
+the 1.37 GB wallpaper pack (a minimal option is planned).
+
+Manual equivalent, step by step:
+
+1. `dots system` — runs [`equisdots/hyprland`](https://github.com/equisdots/hyprland)'s
+   installer: distro packages, Hack Nerd Font, login theme (clones
+   `equisdots/login` on demand), `/etc/pam.d/quickshell`, kitty/nvim/starship
    configs from their repos. Asks for sudo. Add `-y` for a fully
-   non-interactive run (recommended defaults; skips the 1.37 GB wallpaper
-   pack, which has a minimal option planned).
+   non-interactive run.
 2. `dots install` — clones the org under `~/.local/share/equisdots` and places
    the user payload (Hyprland config + scripts, shell, palettes, engines,
-   timex UI).
-3. `dots doctor` — verifies binaries and installed paths. The xwww wallpaper
-   daemon (fork of awww) is installed by `dots system` from the
+   timex UI). It also installs the `dots` wrapper and the monthly updater
+   timer.
+3. `dots doctor` — verifies binaries, repo clones and installed paths. The
+   xwww wallpaper daemon (fork of awww) is installed by `dots system` from the
    checksum-verified prebuilt release (source fallback with rust); the
    standalone installer is `scripts/install-xwww.sh` (`FORCE_XWWW=1` on the
    hyprland installer reinstalls an existing one).
@@ -57,12 +75,14 @@ yourself.
 No need to clone first — the script clones the whole org itself:
 
 ```sh
-bash <(curl -fsSL https://raw.githubusercontent.com/equisdots/dots/main/dots) install
+bash <(curl -fsSL https://raw.githubusercontent.com/equisdots/dots/main/dots) setup -y
 bash <(curl -fsSL https://raw.githubusercontent.com/equisdots/dots/main/dots) doctor
 ```
 
-The requirements below must already be present. System-level steps that need
-sudo (packages, fonts, login theme, PAM, xwww) are handled by
+After the first run, `dots` is available at `~/.local/bin/dots` and every repo
+lives in `~/.local/share/equisdots`. The requirements below must already be
+present. System-level steps that need sudo (packages, fonts, login theme, PAM,
+xwww) are handled by
 [`equisdots/hyprland`](https://github.com/equisdots/hyprland)'s `install.sh`
 or manually.
 
