@@ -14,6 +14,7 @@ sync.
 | [davincix](https://github.com/equisdots/davincix) | Wallpaper fetch/apply kernel | `~/.local/bin/davincix` |
 | [theme-sync](https://github.com/equisdots/theme-sync) | Cross-app theme regeneration | `~/.local/bin/theme-sync` |
 | [timex](https://github.com/equisdots/timex) | Time & weather engine (providers, calendar popup UI, settings tab) | engine `~/.local/share/equisdots/timex` + `~/.local/bin/timex`; UI → `.../quickshell/ui/timex` |
+| [login](https://github.com/equisdots/login) | Static minimal SDDM greeter | `/usr/share/sddm/themes/x` (one-time, `dots system`) |
 
 Repos are cloned under `~/.local/share/equisdots/<repo>`.
 
@@ -22,7 +23,7 @@ Repos are cloned under `~/.local/share/equisdots/<repo>`.
 ```sh
 git clone https://github.com/equisdots/dots.git
 cd dots
-./dots system      # packages, fonts, SDDM theme, PAM, external configs (sudo)
+./dots system      # packages, fonts, login theme, PAM, external configs (sudo)
 ./dots install     # clone/update every repo and place it
 ./dots doctor      # check dependencies and paths
 ./dots list        # repo status (clean / dirty / missing)
@@ -37,7 +38,8 @@ yourself.
 ### Fresh machine
 
 1. `dots system` — runs `equisdots/hyprland`'s installer: distro packages,
-   Hack Nerd Font, SDDM theme, `/etc/pam.d/quickshell`, kitty/nvim/starship
+   Hack Nerd Font, login theme (clones `equisdots/login` on demand),
+   `/etc/pam.d/quickshell`, kitty/nvim/starship
    configs from their repos. Asks for sudo. Add `-y` for a fully
    non-interactive run (recommended defaults; skips the 1.37 GB wallpaper
    pack, which has a minimal option planned).
@@ -60,7 +62,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/equisdots/dots/main/dots) do
 ```
 
 The requirements below must already be present. System-level steps that need
-sudo (packages, fonts, SDDM theme, PAM, xwww) are handled by
+sudo (packages, fonts, login theme, PAM, xwww) are handled by
 [`equisdots/hyprland`](https://github.com/equisdots/hyprland)'s `install.sh`
 or manually.
 
