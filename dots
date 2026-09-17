@@ -54,19 +54,32 @@ EOF
 fetch_repo() {
     local name="$1"
     if [[ -d "$BASE/$name/.git" ]]; then
-        git -C "$BASE/$name" pull --ff-only --quiet && ok "$name updated"
+        if git -C "$BASE/$name" pull --ff-only --quiet; then
+            ok "$name updated"
+        else
+            warn "$name: pull failed (local changes or no network); using the existing checkout"
+        fi
     else
         mkdir -p "$BASE"
         # Existing non-git copy (manual install): park it instead of failing.
         if [[ -d "$BASE/$name" && ! -d "$BASE/$name/.git" ]]; then
             mv "$BASE/$name" "$BASE/$name.pre-dots" && ok "$name: old copy -> $name.pre-dots"
         fi
-        git clone --depth 1 "https://github.com/$ORG/$name.git" "$BASE/$name" --quiet && ok "$name cloned"
+        if git clone --depth 1 "https://github.com/$ORG/$name.git" "$BASE/$name" --quiet; then
+            ok "$name cloned"
+        else
+            warn "$name: clone failed (network? git missing?)"
+            return 1
+        fi
     fi
 }
 
 sync_repo() {
     local name="$1"
+    if [[ ! -d "$BASE/$name" ]]; then
+        warn "$name: not cloned; skipping (retry: dots install)"
+        return 0
+    fi
     case "$name" in
         hyprland)
             msg "hyprland: config -> $HYPR"
@@ -95,9 +108,10 @@ sync_repo() {
         shell)
             msg "shell: quickshell -> $QS"
             mkdir -p "$QS"
-            # --delete with dock/ excluded: the shell directory is fully
-            # managed, but dock/ hosts the frozen palette path (palettes repo).
-            rsync -a --delete --exclude '.git*' --exclude 'docs/' --exclude 'dock/' "$BASE/shell/" "$QS/"
+            # --delete with dock/palettes/ excluded: the shell directory is fully
+            # managed (old xlinux dock/topbar leftovers are purged), but the
+            # frozen palette path survives.
+            rsync -a --delete --exclude '.git*' --exclude 'docs/' --exclude 'dock/palettes/' "$BASE/shell/" "$QS/"
             find "$QS" -name '*.sh' -exec chmod +x {} + 2>/dev/null || true ;;
         palettes)
             msg "palettes -> $QS/dock/palettes"
@@ -147,31 +161,49 @@ WRAP
 }
 
 cmd_install() {
-    for r in "${REPOS[@]}"; do fetch_repo "$r"; done
+    local c r n=0
+    for c in git rsync; do
+        if ! command -v "$c" >/dev/null 2>&1; then
+            warn "dots install requires '$c' (run: dots system first)"
+            return 1
+        fi
+    done
+    for r in "${REPOS[@]}"; do fetch_repo "$r" || true; done
     for r in "${REPOS[@]}"; do sync_repo "$r"; done
-    ok "installed — restart the shell (qs kill; qs -p $QS/Shell.qml &)"
+    for r in "${REPOS[@]}"; do [[ -d "$BASE/$r" ]] && n=$((n + 1)); done
+    if [[ "$n" -eq 0 ]]; then
+        warn "no repo could be cloned (network/git?); nothing was installed"
+        return 1
+    fi
+    ok "installed ($n/${#REPOS[@]} repos) — restart the shell (qs kill; qs -p $QS/Shell.qml &)"
 }
 
 cmd_update() { cmd_install; }
 
-# One-shot full install: payload first (no sudo, always lands), system stack
-# after. If the system phase fails (packages, distro, sudo), the shell,
-# palettes, engines and wrappers are already in place; the failure is reported
-# with the installer log path and can be retried with `dots system`.
+# One-shot full install. Payload first (no sudo, always lands), system stack
+# after. If git/rsync are missing the system stack runs first (it installs
+# them) and the payload is retried afterwards. Failures are reported but never
+# abort the other phase: a broken system step must not leave the desktop
+# without the shell, palettes, engines or wrappers.
 cmd_setup() {
-    if ! cmd_install; then
-        warn "payload phase had errors (see above); continuing with the system stack"
-    fi
-    if ! cmd_system "$@"; then
-        warn "system phase failed — payload is installed. Review the installer log (see above) and retry with: dots system"
+    if command -v git >/dev/null 2>&1 && command -v rsync >/dev/null 2>&1; then
+        cmd_install || warn "payload phase had errors (see above)"
+        cmd_system "$@" || warn "system phase failed — payload is installed. Log: ls -t /tmp/hyprland-install-*.log | head -1; retry with: dots system"
+    else
+        warn "git/rsync missing: running the system stack first (installs them), then the payload"
+        cmd_system "$@" || warn "system phase failed; trying the payload anyway"
+        cmd_install || warn "payload phase had errors (see above)"
     fi
     ok "setup finished — log out and pick Hyprland at the login screen"
 }
 
 cmd_system() {
     msg "system stack: hyprland installer (packages, fonts, login theme, PAM, external configs)"
-    fetch_repo hyprland
-    [[ -x "$BASE/hyprland/install.sh" ]] || die "hyprland/install.sh not found"
+    fetch_repo hyprland || true
+    if [[ ! -x "$BASE/hyprland/install.sh" ]]; then
+        warn "hyprland/install.sh not found (clone failed?)"
+        return 1
+    fi
     # The guard tells install.sh that this run is under dots: the user payload
     # (shell, palettes, engines) is deployed by cmd_install right after.
     DOTS_SYSTEM_RUN=1 bash "$BASE/hyprland/install.sh" "$@"
