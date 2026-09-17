@@ -334,6 +334,14 @@ cmd_doctor() {
     else
         printf '\033[1;33m !\033[0m /usr/share/sddm/themes/x missing (run: dots system)\n'; fail=1
     fi
+    # The theme only shows if SDDM is the active display manager.
+    local dm_name
+    dm_name="$(basename "$(readlink /etc/systemd/system/display-manager.service 2>/dev/null)")"
+    if [[ "$dm_name" == "sddm.service" ]]; then
+        ok "display-manager -> sddm.service"
+    else
+        printf '\033[1;33m !\033[0m active display manager is %s, not SDDM: the login theme will not show (run: dots system)\n' "${dm_name:-none}"; fail=1
+    fi
 
     # Monthly updater timer (dots install / install.sh).
     if systemctl --user is-active --quiet dotfiles-update.timer 2>/dev/null; then
