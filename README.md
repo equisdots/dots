@@ -14,6 +14,7 @@ sync.
 | [davincix](https://github.com/equisdots/davincix) | Wallpaper fetch/apply kernel | `~/.local/bin/davincix` |
 | [theme-sync](https://github.com/equisdots/theme-sync) | Cross-app theme regeneration | `~/.local/bin/theme-sync` |
 | [timex](https://github.com/equisdots/timex) | Time & weather engine (providers, calendar popup UI, settings tab) | engine `~/.local/share/equisdots/timex` + `~/.local/bin/timex`; UI → `.../quickshell/ui/timex` |
+| [xturing](https://github.com/equisdots/xturing) | Terminal UI (ratatui) for the settings panel: every option of SUPER+SHIFT+D, search palette, mouse/touch | `~/.local/bin/xturing` (built with cargo; cache in `~/.cache/equisdots/xturing-build`) |
 | [login](https://github.com/equisdots/login) | Static minimal SDDM greeter | `/usr/share/sddm/themes/x` (one-time, `dots system`) |
 
 Repos are cloned under `~/.local/share/equisdots/<repo>`.
