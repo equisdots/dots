@@ -4,10 +4,10 @@
 # Requires: curl, tar and sudo; rust/cargo only for the fallback build.
 # Installs only the two binaries davincix uses (client `xwww` and daemon
 # `xwww-daemon`) in /usr/local/bin.
-# Env: XWWW_VERSION overrides the release tag (default v0.12.1).
+# Env: XWWW_VERSION overrides the release tag (default v0.13.0).
 set -euo pipefail
 
-VERSION="${XWWW_VERSION:-v0.12.1}"
+VERSION="${XWWW_VERSION:-v0.13.0}"
 case "$(uname -m)" in
     x86_64) ARCH="x86_64-unknown-linux-gnu" ;;
     aarch64|arm64) ARCH="aarch64-unknown-linux-gnu" ;;
@@ -55,7 +55,7 @@ install_source() {
         printf 'xwww: cargo missing (install rust) and no prebuilt release available\n' >&2
         return 1
     fi
-    (cd "$src" && cargo build --release)
+    (cd "$src" && cargo build --release --features scene)
     sudo install -Dm755 "$src/target/release/xwww" "$src/target/release/xwww-daemon" /usr/local/bin/
 }
 
