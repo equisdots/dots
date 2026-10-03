@@ -67,9 +67,14 @@ Manual equivalent, step by step:
    timer.
 3. `dots doctor` — verifies binaries, repo clones and installed paths. The
    xwww wallpaper daemon (fork of awww) is installed by `dots system` from the
-   checksum-verified prebuilt release (source fallback with rust); the
-   standalone installer is `scripts/install-xwww.sh` (`FORCE_XWWW=1` on the
-   hyprland installer reinstalls an existing one).
+   checksum-verified prebuilt release (source fallback with rust). The
+   hyprland installer only touches xwww when it is missing, so both
+   `dots update` and `dots system` compare the running binary with the pinned
+   release (the default in `scripts/install-xwww.sh`, overridable with
+   `XWWW_VERSION`) and reinstall it when they differ; `dots doctor` reports
+   the version mismatch. The standalone installer is
+   `scripts/install-xwww.sh` (`FORCE_XWWW=1` on the hyprland installer
+   reinstalls an existing one blindly).
 
 ## Remote install
 
