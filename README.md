@@ -64,7 +64,12 @@ Manual equivalent, step by step:
 2. `dots install` — clones the org under `~/.local/share/equisdots` and places
    the user payload (Hyprland config + scripts, shell, palettes, engines,
    timex UI). It also installs the `dots` wrapper and the monthly updater
-   timer.
+   timer. Managed clones are read-only: interactive `dots update` fetches them
+   and fast-forwards to `origin/main`. If a clone has uncommitted changes it is
+   kept untouched **and its payload is not deployed**, so a stale checkout can
+   never downgrade or delete live files; `dots doctor` flags those clones.
+   Recover by committing/stashing the changes or by parking the clone
+   (`mv ~/.local/share/equisdots/<repo>{,.local} && dots install`).
 3. `dots doctor` — verifies binaries, repo clones and installed paths. The
    xwww wallpaper daemon (fork of awww) is installed by `dots system` from the
    checksum-verified prebuilt release (source fallback with rust). The
