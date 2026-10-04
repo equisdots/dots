@@ -49,6 +49,7 @@ Usage: dots <command>
   setup      full install: system stack (sudo) + user payload, in one run
   install    clone/update every repo and place it in your system
   update     git pull every repo, re-apply and keep xwww at the pinned release
+  reset      forced clean reinstall of the payload from origin/main (user data kept)
   system     run the hyprland installer (packages, fonts, login, PAM, xwww, ...)
   doctor     check dependencies, clones and installed paths
   list       show repo status (present / missing / dirty)
@@ -137,14 +138,20 @@ sync_repo() {
             #  2) drop legacy keys nothing reads anymore
             #  3) (re)apply the shipped defaults as the base (user values win;
             #     user arrays such as bar.zones are kept as-is)
+            #  4) expand a leading "~" in wallpaperDir: the shipped default is
+            #     "~/.config/hypr/wallpapers" and the shell resolves the path
+            #     verbatim, so a literal tilde leaves the wallpaper picker empty
+            #     and every apply fails with "File not found: ~/...".
             if [[ -f "$HYPR/settings.json" && -f "$HYPR/default_settings.json" ]] \
                && command -v jq >/dev/null 2>&1; then
                 local tmp
                 tmp="$(mktemp)"
-                if jq --slurpfile def "$HYPR/default_settings.json" '
+                if jq --slurpfile def "$HYPR/default_settings.json" --arg home "$HOME" '
                     (if (has("dock") and (has("bar") | not)) then .bar = .dock else . end)
                     | del(.dock, .serpbar, .openGuideAtStartup, .topbarHelpIcon, .monitors)
                     | $def[0] * .
+                    | (if ((.wallpaperDir // "") | startswith("~"))
+                       then .wallpaperDir = ($home + (.wallpaperDir | ltrimstr("~"))) else . end)
                 ' "$HYPR/settings.json" > "$tmp" 2>/dev/null; then
                     mv "$tmp" "$HYPR/settings.json"
                     ok "settings.json = defaults + user overrides"
@@ -317,6 +324,84 @@ cmd_xwww() {
 
 cmd_update() { cmd_install; cmd_xwww; }
 
+# ── reset: forced clean reinstall of the managed payload ─────────────────────
+# `update` re-fetches the clones and copies over the live files; a half-written
+# install, a file a repo no longer ships or a dirty managed clone (whose payload
+# is skipped by design) can survive that. `reset` removes the deployed files and
+# the managed clones first, then reinstalls everything from origin/main.
+#
+# User data is never touched: settings.json, config/ overrides, wallpapers/,
+# the palette store (dock/palettes, including community + editor edits),
+# display-config, idle-settings.json, README.md and the hyprland-backup-*
+# snapshots survive. The system stack (sudo) is out of scope: run `dots system`.
+
+reset_payload() {
+    msg "reset: purging the deployed payload (user data is preserved)"
+
+    # hypr scripts → managed, except the shell dir (holds the palette store).
+    if [[ -d "$HYPR/scripts" ]]; then
+        find "$HYPR/scripts" -mindepth 1 -maxdepth 1 ! -name quickshell \
+            -exec rm -rf {} + 2>/dev/null || true
+    fi
+
+    # shell → $QS: drop everything except the palette store (dock/).
+    if [[ -d "$QS" ]]; then
+        find "$QS" -mindepth 1 -maxdepth 1 ! -name dock -exec rm -rf {} + 2>/dev/null || true
+    fi
+
+    # hyprland → $HYPR: repo-shipped files only (Lua modules, idle config and
+    # the seeded defaults). settings.json, config/, wallpapers/,
+    # display-config*, idle-settings.json and backups stay untouched.
+    rm -f "$HYPR"/*.lua "$HYPR/hypridle.conf" "$HYPR/default_settings.json"
+
+    # app configs shipped by hyprland (rofi themes, dunst, cava): remove exactly
+    # the tracked files so an old copy cannot shadow the fresh one. Generated
+    # files (colors.rasi template, cava config, kitty/nvim themes) are
+    # re-created by the deploy + theme-sync below.
+    if [[ -d "$BASE/hyprland/.git" ]]; then
+        local rel app
+        while IFS= read -r rel; do
+            app="${rel#config/}"; app="${app%%/*}"
+            rm -f "$CFG/$app/$(basename "$rel")"
+        done < <(git -C "$BASE/hyprland" ls-files 'config/rofi' 'config/dunst' 'config/cava' 2>/dev/null)
+    fi
+}
+
+reset_clones() {
+    local r
+    for r in "${REPOS[@]}"; do
+        # Never delete the running dots checkout: bash reads this script
+        # incrementally and rewriting it mid-run is unsafe. fetch_repo hard-
+        # resets it anyway, so it still lands on the latest origin/main.
+        [[ "$r" == "dots" ]] && continue
+        if [[ -d "$BASE/$r" ]]; then
+            rm -rf "$BASE/$r"
+            ok "$r: clone dropped"
+        fi
+    done
+}
+
+cmd_reset() {
+    case "${1:-}" in
+        "") ;;
+        *) die "reset: no options (usage: dots reset)" ;;
+    esac
+    reset_payload
+    reset_clones
+    cmd_install
+    # Palette-derived files (rofi colors, cava, kitty, nvim, starship) are
+    # regenerated so the desktop is consistent right after the reset.
+    if [[ -x "$BASE/theme-sync/theme-sync.sh" ]]; then
+        msg "reset: re-applying the active palette (theme-sync)"
+        if bash "$BASE/theme-sync/theme-sync.sh" >/dev/null 2>&1; then
+            ok "theme-sync re-applied"
+        else
+            warn "theme-sync failed; run 'theme-sync' manually after restarting the shell"
+        fi
+    fi
+    msg "reset done — restart the shell (qs kill; qs -p $QS/Shell.qml &)"
+}
+
 # One-shot full install. Payload first (no sudo, always lands), system stack
 # after. If git/rsync are missing the system stack runs first (it installs
 # them) and the payload is retried afterwards. Failures are reported but never
@@ -478,6 +563,7 @@ case "${1:-help}" in
     setup)     shift; cmd_setup "$@" ;;
     install)   cmd_install ;;
     update)    cmd_update ;;
+    reset)     shift; cmd_reset "$@" ;;
     system)    shift; cmd_system "$@" ;;
     doctor)    cmd_doctor ;;
     list)      cmd_list ;;

@@ -30,6 +30,7 @@ cd dots
 ./dots doctor      # check dependencies, clones and installed paths
 ./dots list        # repo status (clean / dirty / missing)
 ./dots update      # pull everything and re-apply
+./dots reset       # forced clean reinstall of the payload (user data kept)
 ./dots uninstall   # remove the created links and the updater timer
 ```
 
@@ -39,6 +40,21 @@ run the `dots` command is available from anywhere.
 `install` never deletes your live config: it copies over it and keeps your
 `settings.json` untouched. For a full purge you must remove `~/.config/hypr`
 yourself.
+
+`dots reset` is the escape hatch for a bad install: it deletes the managed
+files (Hyprland config/scripts, shell, app configs) and the managed clones,
+then reinstalls everything from the latest `origin/main` and re-applies the
+active palette. It never touches your data: `settings.json`, `config/`
+overrides, `wallpapers/`, the palette store (`dock/palettes`, including
+community and editor edits), `display-config`, `idle-settings.json` and the
+`hyprland-backup-*` snapshots survive. It also recovers dirty managed clones,
+which block their payload during `update`/`install`. The system stack (sudo)
+is out of scope: run `dots system` for packages, fonts, login theme and PAM.
+
+Both `install`/`update`/`reset` normalize a leading `~` in `settings.json`'s
+`wallpaperDir` to an absolute path, so the wallpaper picker always finds the
+collection (a literal `~` left the grid empty and failed every apply with
+`File not found`).
 
 ### Fresh machine
 
