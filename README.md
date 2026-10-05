@@ -10,6 +10,7 @@ sync.
 |---|---|---|
 | [hyprland](https://github.com/equisdots/hyprland) | Compositor config (Lua), scripts, installer | `~/.config/hypr` |
 | [shell](https://github.com/equisdots/shell) | Quickshell UI (bar, panels, editor, popups) | `~/.config/hypr/scripts/quickshell` |
+| [nyx](https://github.com/equisdots/nyx) | Mascot island / notch + control center (species, dock, stats) | `.../quickshell/ui/nyx` |
 | [palettes](https://github.com/equisdots/palettes) | Color palettes (JSON set + schema) | `.../quickshell/dock/palettes` |
 | [davincix](https://github.com/equisdots/davincix) | Wallpaper fetch/apply kernel | `~/.local/bin/davincix` |
 | [theme-sync](https://github.com/equisdots/theme-sync) | Cross-app theme regeneration | `~/.local/bin/theme-sync` |
