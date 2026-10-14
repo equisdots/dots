@@ -35,7 +35,7 @@ CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
 HYPR="$CFG/hypr"
 QS="$HYPR/scripts/quickshell"
 BIN="$HOME/.local/bin"
-REPOS=(dots palettes theme-sync davincix shell nyx hyprland timex xturing login)
+REPOS=(dots palettes theme-sync davincix shell plugin-api plugin-sdk nyx hyprland timex xturing login)
 
 msg()  { printf '\033[1;34m::\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m ✓\033[0m %s\n' "$*"; }
@@ -179,8 +179,25 @@ sync_repo() {
             # (legacy dock/topbar leftovers are purged) but the frozen palette
             # path (dock/palettes) survives untouched and rsync doesn't warn
             # trying to delete it.
-            rsync -a --delete --exclude '.git*' --exclude 'docs/' --exclude 'dock/' --exclude 'ui/plugins/' "$BASE/shell/" "$QS/"
+            rsync -a --delete --exclude '.git*' --exclude 'docs/' --exclude 'dock/' --exclude 'ui/plugins/' \
+                  --exclude 'core/sdk/' --exclude 'plugin-api.json' --exclude 'core/scripts/plugins_compat.sh' \
+                  "$BASE/shell/" "$QS/"
             find "$QS" -name '*.sh' -exec chmod +x {} + 2>/dev/null || true ;;
+        plugin-api)
+            # The normative contract + the compat evaluator (equisdots/plugin-api),
+            # consumed by the shell scan and the hypr loader.
+            msg "plugin-api -> $QS (plugin-api.json + compat evaluator)"
+            mkdir -p "$QS/core/scripts"
+            cp -f "$BASE/plugin-api/plugin-api.json" "$QS/plugin-api.json"
+            cp -f "$BASE/plugin-api/scripts/plugins_compat.sh" "$QS/core/scripts/plugins_compat.sh"
+            chmod +x "$QS/core/scripts/plugins_compat.sh" 2>/dev/null || true ;;
+        plugin-sdk)
+            # The runtime QML kit (equisdots/plugin-sdk); the shell imports it
+            # as `import "sdk"` from core/. Fingerprint: its api version must
+            # match the deployed plugin-api.json.
+            msg "plugin-sdk -> $QS/core/sdk (QML host kit)"
+            mkdir -p "$QS/core/sdk"
+            rsync -a --delete --exclude '.git*' "$BASE/plugin-sdk/qml/" "$QS/core/sdk/" ;;
         nyx)
             msg "nyx: plugin UI (front + species + settings) -> $QS/ui/plugins/nyx"
             mkdir -p "$QS/ui/plugins/nyx"
@@ -569,6 +586,21 @@ cmd_doctor() {
     if [[ -n "$unit_exec" && "$unit_exec" != "$HYPR/scripts/dotfiles-update.sh" && "$unit_exec" != "$BASE/hyprland/scripts/dotfiles-update.sh" ]]; then
         printf '\033[1;33m ~\033[0m dotfiles-update.service points outside the install (%s); re-run: dots install\n' "$unit_exec"
     fi
+
+    # Plugin compatibility (equisdots/plugin-api): fail if an ENABLED plugin is
+    # incompatible with the deployed host API.
+    if command -v jq >/dev/null 2>&1 && [[ -d "$HYPR/plugins" ]] && [[ -x "$QS/core/scripts/plugins_compat.sh" ]]; then
+        local pid pname pstate pcomp pdot
+        while IFS=$'\t' read -r pid pname _v _t pstate _d _tg pcomp; do
+            [[ -n "$pid" && "$pcomp" == "incompat" ]] || continue
+            if [[ "$pstate" == "enabled" ]]; then
+                printf '\033[31m ✗\033[0m plugin %s is incompatible but enabled (dots plugins disable %s)\n' "$pid" "$pid"
+                fail=1
+            else
+                printf '\033[1;33m ~\033[0m plugin %s is incompatible (disabled)\n' "$pid"
+            fi
+        done < <(plugins_scan 2>/dev/null | awk -F'\t' '!seen[$1]++')
+    fi
     exit $fail
 }
 
@@ -583,15 +615,28 @@ plugins_settings() {
     if [[ -f "$f" ]] && jq -e . "$f" >/dev/null 2>&1; then jq -c . "$f"; else printf '{}'; fi
 }
 
-# TSV: id, name, version, type, state, dir, toggle (user dir first: wins).
+# TSV: id, name, version, type, state, dir, toggle, compat (user dir first: wins).
 plugins_scan() {
-    local sobj d e
+    local sobj d e compat_tool host_api shell_version c comp
     sobj="$(plugins_settings)"
+    compat_tool="$QS/core/scripts/plugins_compat.sh"
+    host_api=""; shell_version=""
+    if [[ -f "$QS/plugin-api.json" ]]; then
+        host_api="$(jq -r '.api // empty' "$QS/plugin-api.json" 2>/dev/null)"
+        shell_version="$(jq -r '.shell // empty' "$QS/plugin-api.json" 2>/dev/null)"
+    fi
     for d in "$HYPR/plugins-user" "$HYPR/plugins"; do
         [[ -d "$d" ]] || continue
         for e in "$d"/*/; do
             [[ -f "${e}plugin.json" ]] || continue
-            jq -r --arg base "${e%/}" --argjson s "$sobj" '
+            comp="ok"
+            if [[ -x "$compat_tool" ]]; then
+                c="$(jq -c '.compat // empty' "${e}plugin.json" 2>/dev/null)"
+                if [[ -n "$c" ]]; then
+                    comp="$(HOST_API="$host_api" SHELL_VERSION="$shell_version" bash "$compat_tool" <<<"$c" 2>/dev/null | jq -r '.state // "ok"')"
+                fi
+            fi
+            jq -r --arg base "${e%/}" --argjson s "$sobj" --arg comp "$comp" '
                 . as $m
                 | select(($m.id // "") != "")
                 | ($m.toggle // ("plugins." + $m.id + ".enabled")) as $t
@@ -600,7 +645,7 @@ plugins_scan() {
                 | [ $m.id, ($m.name // $m.id), ($m.version // "-"), ($m.type // "-"),
                     (if (if $v == null then ($m.defaultEnabled // false) else ($v == true) end)
                      then "enabled" else "disabled" end),
-                    $base, $t ] | @tsv' "${e}plugin.json" 2>/dev/null || true
+                    $base, $t, $comp ] | @tsv' "${e}plugin.json" 2>/dev/null || true
         done
     done
 }
@@ -616,19 +661,25 @@ cmd_plugins() {
                 msg "no plugins installed ($HYPR/plugins, $HYPR/plugins-user)"
                 return 0
             fi
-            printf '\n  %-16s %-24s %-8s %-6s %s\n' "ID" "NAME" "VERSION" "TYPE" "STATE"
-            while IFS=$'\t' read -r id name ver type state _dir _toggle; do
-                printf '  %-16s %-24s %-8s %-6s %s\n' "$id" "$name" "$ver" "$type" "$state"
+            printf '\n  %-14s %-22s %-7s %-6s %-10s %s\n' "ID" "NAME" "VERSION" "TYPE" "STATE" "COMPAT"
+            local id name ver type state _dir _toggle comp
+            while IFS=$'\t' read -r id name ver type state _dir _toggle comp; do
+                printf '  %-14s %-22s %-7s %-6s %-10s %s\n' "$id" "$name" "$ver" "$type" "$state" "${comp:-ok}"
             done <<< "$rows"
             printf '\n' ;;
         enable|disable)
-            local id="${2:-}" val=false row toggle path tmp
+            local id="${2:-}" val=false row toggle path tmp comp="" force=false
             [[ -n "$id" ]] || die "usage: dots plugins enable|disable <id>"
+            [[ "${3:-}" == "--force" ]] && force=true
             [[ "$sub" == "enable" ]] && val=true
             [[ -f "$HYPR/settings.json" ]] || die "plugins: $HYPR/settings.json not found (run: dots install)"
             row="$(plugins_scan | awk -F'\t' -v id="$id" '$1 == id { print; exit }')"
             [[ -n "$row" ]] || die "plugins: unknown plugin: $id"
             toggle="$(cut -f7 <<< "$row")"
+            comp="$(cut -f8 <<< "$row")"
+            if [[ "$val" == "true" && "$comp" == "incompat" && "$force" != "true" ]]; then
+                die "plugins: $id is incompatible with this host (re-run with --force to override)"
+            fi
             path="$(jq -nc --arg t "$toggle" '$t | split(".")')"
             tmp="$(mktemp "$HYPR/settings.json.tmp.XXXXXX")"
             if jq --argjson p "$path" --argjson v "$val" 'setpath($p; $v)' \
