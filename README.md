@@ -30,6 +30,7 @@ cd dots
 ./dots install     # clone/update every repo and place it (also installs `dots`)
 ./dots doctor      # check dependencies, clones and installed paths
 ./dots list        # repo status (clean / dirty / missing)
+./dots plugins     # list, enable or disable installed plugins
 ./dots update      # pull everything and re-apply
 ./dots reset       # forced clean reinstall of the payload (user data kept)
 ./dots uninstall   # remove the created links and the updater timer
@@ -56,6 +57,24 @@ Both `install`/`update`/`reset` normalize a leading `~` in `settings.json`'s
 `wallpaperDir` to an absolute path, so the wallpaper picker always finds the
 collection (a literal `~` left the grid empty and failed every apply with
 `File not found`).
+
+## Plugins
+
+The desktop supports pluggable features (the equisdots plugin standard:
+manifests, folders and contracts in
+[equisdots/plugins](https://github.com/equisdots/plugins) → `docs/plugins.md`).
+Installed plugins are discovered from `~/.config/hypr/plugins` (managed) and
+`~/.config/hypr/plugins-user` (user) and show up in Settings → Plugins with an
+enable/disable toggle. From the CLI:
+
+```sh
+./dots plugins                  # id, name, version, type, state
+./dots plugins enable <id>
+./dots plugins disable <id>
+```
+
+Nyx is plugin #1: `dots install` places its `plugin.json` in
+`~/.config/hypr/plugins/nyx/`.
 
 ### Fresh machine
 

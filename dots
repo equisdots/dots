@@ -13,6 +13,7 @@
 #   system     run the hyprland installer (packages, fonts, login, PAM, ...)
 #   doctor     check dependencies, clones and installed paths
 #   list       show repo status (present / missing / dirty)
+#   plugins    list, enable or disable installed plugins (registry + toggles)
 #   uninstall  remove links and the updater timer (config files are kept)
 #
 # Remote bootstrap:
@@ -53,6 +54,7 @@ Usage: dots <command>
   system     run the hyprland installer (packages, fonts, login, PAM, xwww, ...)
   doctor     check dependencies, clones and installed paths
   list       show repo status (present / missing / dirty)
+  plugins    list, enable or disable installed plugins (registry + toggles)
   uninstall  remove links and the updater timer (config files are kept)
 
 Remote bootstrap:
@@ -184,7 +186,13 @@ sync_repo() {
             mkdir -p "$QS/ui/nyx"
             # Fully managed (like the shell): nyx owns ui/nyx, the shell rsync
             # above excludes it so --delete never fights this deploy.
-            rsync -a --delete --exclude '.git*' --exclude 'docs/' "$BASE/nyx/" "$QS/ui/nyx/" ;;
+            rsync -a --delete --exclude '.git*' --exclude 'docs/' "$BASE/nyx/" "$QS/ui/nyx/"
+            # Plugins registry (equisdots plugin standard): the manifest lands
+            # in $HYPR/plugins/<id>/ so the shell + the hypr loader find it.
+            if [[ -f "$BASE/nyx/plugin.json" ]]; then
+                mkdir -p "$HYPR/plugins/nyx"
+                cp -f "$BASE/nyx/plugin.json" "$HYPR/plugins/nyx/"
+            fi ;;
         palettes)
             msg "palettes -> $QS/dock/palettes"
             mkdir -p "$QS/dock/palettes"
@@ -562,6 +570,80 @@ cmd_doctor() {
     exit $fail
 }
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Plugins (equisdots plugin standard v0). The registry is the set of folders
+# with a plugin.json in $HYPR/plugins (managed) + $HYPR/plugins-user (user,
+# wins on id). Enable state = the plugin's toggle path in settings.json
+# (plugin.json → "toggle", default plugins.<id>.enabled).
+# ═══════════════════════════════════════════════════════════════════════════
+plugins_settings() {
+    local f="$HYPR/settings.json"
+    if [[ -f "$f" ]] && jq -e . "$f" >/dev/null 2>&1; then jq -c . "$f"; else printf '{}'; fi
+}
+
+# TSV: id, name, version, type, state, dir, toggle (user dir first: wins).
+plugins_scan() {
+    local sobj d e
+    sobj="$(plugins_settings)"
+    for d in "$HYPR/plugins-user" "$HYPR/plugins"; do
+        [[ -d "$d" ]] || continue
+        for e in "$d"/*/; do
+            [[ -f "${e}plugin.json" ]] || continue
+            jq -r --arg base "${e%/}" --argjson s "$sobj" '
+                . as $m
+                | select(($m.id // "") != "")
+                | ($m.toggle // ("plugins." + $m.id + ".enabled")) as $t
+                | ($t | split(".")) as $p
+                | (try ($s | getpath($p)) catch null) as $v
+                | [ $m.id, ($m.name // $m.id), ($m.version // "-"), ($m.type // "-"),
+                    (if (if $v == null then ($m.defaultEnabled // false) else ($v == true) end)
+                     then "enabled" else "disabled" end),
+                    $base, $t ] | @tsv' "${e}plugin.json" 2>/dev/null || true
+        done
+    done
+}
+
+cmd_plugins() {
+    command -v jq >/dev/null 2>&1 || die "plugins: jq is required"
+    local sub="${1:-list}"
+    case "$sub" in
+        list|"")
+            local rows
+            rows="$(plugins_scan | awk -F'\t' '!seen[$1]++')"
+            if [[ -z "$rows" ]]; then
+                msg "no plugins installed ($HYPR/plugins, $HYPR/plugins-user)"
+                return 0
+            fi
+            printf '\n  %-16s %-24s %-8s %-6s %s\n' "ID" "NAME" "VERSION" "TYPE" "STATE"
+            while IFS=$'\t' read -r id name ver type state _dir _toggle; do
+                printf '  %-16s %-24s %-8s %-6s %s\n' "$id" "$name" "$ver" "$type" "$state"
+            done <<< "$rows"
+            printf '\n' ;;
+        enable|disable)
+            local id="${2:-}" val=false row toggle path tmp
+            [[ -n "$id" ]] || die "usage: dots plugins enable|disable <id>"
+            [[ "$sub" == "enable" ]] && val=true
+            [[ -f "$HYPR/settings.json" ]] || die "plugins: $HYPR/settings.json not found (run: dots install)"
+            row="$(plugins_scan | awk -F'\t' -v id="$id" '$1 == id { print; exit }')"
+            [[ -n "$row" ]] || die "plugins: unknown plugin: $id"
+            toggle="$(cut -f7 <<< "$row")"
+            path="$(jq -nc --arg t "$toggle" '$t | split(".")')"
+            tmp="$(mktemp "$HYPR/settings.json.tmp.XXXXXX")"
+            if jq --argjson p "$path" --argjson v "$val" 'setpath($p; $v)' \
+                  "$HYPR/settings.json" > "$tmp" 2>/dev/null; then
+                mv "$tmp" "$HYPR/settings.json"
+            else
+                rm -f "$tmp"
+                die "plugins: could not write settings.json"
+            fi
+            if [[ "$val" == "true" ]]; then ok "plugin $id: enabled"; else ok "plugin $id: disabled"; fi
+            if command -v hyprctl >/dev/null 2>&1; then
+                hyprctl reload >/dev/null 2>&1 || true
+            fi ;;
+        *) die "plugins: unknown subcommand (list|enable|disable)" ;;
+    esac
+}
+
 cmd_uninstall() {
     msg "removing links and the updater timer; config files and clones are kept"
     if [[ -x "$HYPR/scripts/dotfiles-update.sh" ]]; then
@@ -583,6 +665,7 @@ case "${1:-help}" in
     system)    shift; cmd_system "$@" ;;
     doctor)    cmd_doctor ;;
     list)      cmd_list ;;
+    plugins)   shift; cmd_plugins "$@" ;;
     uninstall) cmd_uninstall ;;
     *) usage ;;
 esac
