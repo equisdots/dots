@@ -30,7 +30,7 @@ cd dots
 ./dots install     # clone/update every repo and place it (also installs `dots`)
 ./dots doctor      # check dependencies, clones and installed paths
 ./dots list        # repo status (clean / dirty / missing)
-./dots plugins     # list, enable or disable installed plugins
+./dots plugins     # install and manage plugins (add/remove/available/list/...)
 ./dots update      # pull everything and re-apply
 ./dots reset       # forced clean reinstall of the payload (user data kept)
 ./dots uninstall   # remove the created links and the updater timer
@@ -68,10 +68,25 @@ Installed plugins are discovered from `~/.config/hypr/plugins` (managed) and
 enable/disable toggle. From the CLI:
 
 ```sh
-./dots plugins                  # id, name, version, type, state
+./dots plugins                  # installed: id, name, version, type, state
+./dots plugins available        # registry: every known plugin (installed/available)
+./dots plugins add <id>         # fetch + deploy by convention + enable
+./dots plugins remove <id>
 ./dots plugins enable <id>
 ./dots plugins disable <id>
 ```
+
+Plugins install from the **registry** (`equisdots/plugins` → `registry.json`):
+`dots plugins add <id>` resolves the source (owner/repo + optional path),
+fetches it, deploys it by the standard convention (UI face into the shell
+tree, runtime subset into `~/.config/hypr/plugins/<id>/`) and enables it;
+`compat` is enforced (`--force` overrides). Settings → Plugins lists the
+available ones too (with an Install button), reading the registry copy that
+`dots` deploys into the shell tree.
+
+> Experimental phase: the registry and the plugin sources live on
+> `branch/experimental` (override with `EQUISDOTS_PLUGIN_BRANCH=main` after the
+> standard merges).
 
 Nyx is plugin #1: `dots install` places its `plugin.json` in
 `~/.config/hypr/plugins/nyx/`.
