@@ -759,6 +759,22 @@ deploy_plugin() { # <id> <source dir>
         rsync -a --delete --exclude '.git*' "$src/scripts/" "$HYPR/plugins/$id/scripts/"
         find "$HYPR/plugins/$id/scripts" -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
     fi
+    # Plugin-owned settings defaults (manifest "defaults", a settings fragment):
+    # merge into settings.json with the user's values winning — the same
+    # contract as the core default_settings.json. This is what keeps a plugin
+    # self-contained (code + UI + defaults all live in its repo).
+    local defs dtmp
+    defs="$(jq -r '.defaults // empty' "$src/plugin.json" 2>/dev/null || true)"
+    if [[ -n "$defs" && -f "$src/$defs" && -f "$HYPR/settings.json" ]] && command -v jq >/dev/null 2>&1; then
+        dtmp="$(mktemp)"
+        if jq --slurpfile def "$src/$defs" '$def[0] * .' "$HYPR/settings.json" > "$dtmp" 2>/dev/null; then
+            mv "$dtmp" "$HYPR/settings.json"
+            ok "plugin $id: defaults merged ($defs)"
+        else
+            rm -f "$dtmp"
+            warn "plugin $id: defaults could not be merged (left untouched)"
+        fi
+    fi
     # Standalone entries (manifest "standalone"): one root-level launcher per
     # entry. The launcher imports the entry's directory (relative to the shell
     # tree root) and instantiates it, so the entry runs with the shell tree as
