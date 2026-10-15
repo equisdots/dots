@@ -80,9 +80,16 @@ Plugins install from the **registry** (`equisdots/plugins` → `registry.json`):
 `dots plugins add <id>` resolves the source (owner/repo + optional path),
 fetches it, deploys it by the standard convention (UI face into the shell
 tree, runtime subset into `~/.config/hypr/plugins/<id>/`) and enables it;
-`compat` is enforced (`--force` overrides). Settings → Plugins lists the
-available ones too (with an Install button), reading the registry copy that
-`dots` deploys into the shell tree.
+`compat` is enforced (`--force` overrides). Plugins that declare `standalone`
+entries get a root-level launcher (`plugin-<id>-<entry>.qml`) so their
+standalone QML runs with the shell tree as the config root. Settings →
+Plugins lists the available ones too (with an Install button), reading the
+registry copy that `dots` deploys into the shell tree.
+
+`dots install/update` also deploys the **default plugins** (`DEFAULT_PLUGINS`:
+`screenshots`, which owns the Print binds + overlay + recording) through the
+same convention without touching the toggle, so existing users keep the
+feature.
 
 > Experimental phase: the registry and the plugin sources live on
 > `branch/experimental` (override with `EQUISDOTS_PLUGIN_BRANCH=main` after the
