@@ -199,7 +199,7 @@ sync_repo() {
             # trying to delete it.
             rsync -a --delete --exclude '.git*' --exclude 'docs/' --exclude 'dock/' --exclude 'ui/plugins/' \
                   --exclude 'core/sdk/' --exclude 'plugin-api.json' --exclude 'core/scripts/plugins_compat.sh' \
-                  --exclude 'plugins-registry.json' \
+                  --exclude 'plugins-registry.json' --exclude 'plugin-*.qml' \
                   "$BASE/shell/" "$QS/"
             find "$QS" -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
             # legacy pre-standard location (the old home of nyx's UI)
