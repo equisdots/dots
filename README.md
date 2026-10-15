@@ -88,8 +88,10 @@ registry copy that `dots` deploys into the shell tree.
 
 `dots install/update` also deploys the **default plugins** (`DEFAULT_PLUGINS`:
 `screenshots` — Print binds + overlay + recording; `timex` — calendar/weather
-panel; `rss-reader` — the feed reader panel) through the same convention
-without touching the toggle, so existing users keep the features.
+panel + bar island; `rss-reader` — feed reader panel; `clipboard`;
+`quicknotes`; `file-search`; `sysmon` — CPU/RAM bar island, its floating
+monitor is opt-in) through the same convention without touching the toggle,
+so existing users keep the features.
 
 > Experimental phase: the registry and the plugin sources live on
 > `branch/experimental` (override with `EQUISDOTS_PLUGIN_BRANCH=main` after the
