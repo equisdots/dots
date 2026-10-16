@@ -41,7 +41,7 @@ REPOS=(dots palettes theme-sync davincix shell plugin-api plugin-sdk plugins nyx
 # Plugins that ship with the stack: deployed on every install/update through
 # the registry convention (no toggle write; the manifest's defaultEnabled
 # decides the state, so existing users keep the feature).
-DEFAULT_PLUGINS=(screenshots timex rss-reader clipboard quicknotes file-search sysmon)
+DEFAULT_PLUGINS=(screenshots timex rss-reader clipboard quicknotes file-search sysmon keybinds)
 # Plugin hub (equisdots/plugins): the standard, the concentration folder and
 # the install registry. Cloned like any other repo; a copy of its registry.json
 # is what the shell's Plugins page reads to list available plugins.
