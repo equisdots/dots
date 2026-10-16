@@ -28,7 +28,7 @@ cd dots
 ./dots setup       # EVERYTHING: system stack (sudo) + user payload, one run
 ./dots system      # packages, fonts, login theme, PAM, external configs (sudo)
 ./dots install     # clone/update every repo and place it (also installs `dots`)
-./dots doctor      # check dependencies, clones and installed paths
+./dots doctor      # check dependencies, clones, installed paths and plugin id integrity
 ./dots list        # repo status (clean / dirty / missing)
 ./dots plugins     # install and manage plugins (add/remove/available/list/...)
 ./dots update      # pull everything and re-apply
