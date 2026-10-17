@@ -47,11 +47,21 @@ DEFAULT_PLUGINS=(screenshots timex rss-reader clipboard quicknotes file-search s
 # is what the shell's Plugins page reads to list available plugins.
 HUB="$BASE/plugins"
 REGISTRY="$HUB/registry.json"
-# Experimental phase: the plugin standard, the registry and the plugin sources
-# live on `branch/experimental` (nothing merged to main yet). Flip to `main`
-# when the standard lands there, or override for one run:
-#   EQUISDOTS_PLUGIN_BRANCH=main dots plugins add <id>
-PLUGIN_BRANCH="${EQUISDOTS_PLUGIN_BRANCH:-branch/experimental}"
+# The plugin hub (standard, registry, plugin sources) tracks `main`. If the
+# local plugins checkout is still on the pre-merge `branch/experimental`, follow
+# it automatically so an in-progress experimental install keeps working; an
+# explicit override always wins:
+#   EQUISDOTS_PLUGIN_BRANCH=branch/experimental dots plugins add <id>
+if [[ -n "${EQUISDOTS_PLUGIN_BRANCH:-}" ]]; then
+    PLUGIN_BRANCH="$EQUISDOTS_PLUGIN_BRANCH"
+else
+    _plugins_head="$(git -C "$BASE/plugins" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    if [[ "$_plugins_head" == "branch/experimental" ]]; then
+        PLUGIN_BRANCH="branch/experimental"
+    else
+        PLUGIN_BRANCH="main"
+    fi
+fi
 
 msg()  { printf '\033[1;34m::\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m ✓\033[0m %s\n' "$*"; }
