@@ -28,8 +28,9 @@ cd dots
 ./dots setup       # EVERYTHING: system stack (sudo) + user payload, one run
 ./dots system      # packages, fonts, login theme, PAM, external configs (sudo)
 ./dots install     # clone/update every repo and place it (also installs `dots`)
-./dots doctor      # check dependencies, clones and installed paths
+./dots doctor      # check dependencies, clones, installed paths and plugin id integrity
 ./dots list        # repo status (clean / dirty / missing)
+./dots plugins     # install and manage plugins (add/remove/available/list/...)
 ./dots update      # pull everything and re-apply
 ./dots reset       # forced clean reinstall of the payload (user data kept)
 ./dots uninstall   # remove the created links and the updater timer
@@ -56,6 +57,48 @@ Both `install`/`update`/`reset` normalize a leading `~` in `settings.json`'s
 `wallpaperDir` to an absolute path, so the wallpaper picker always finds the
 collection (a literal `~` left the grid empty and failed every apply with
 `File not found`).
+
+## Plugins
+
+The desktop supports pluggable features (the equisdots plugin standard:
+manifests, folders and contracts in
+[equisdots/plugins](https://github.com/equisdots/plugins) → `docs/plugins.md`).
+Installed plugins are discovered from `~/.config/hypr/plugins` (managed) and
+`~/.config/hypr/plugins-user` (user) and show up in Settings → Plugins with an
+enable/disable toggle. From the CLI:
+
+```sh
+./dots plugins                  # installed: id, name, version, type, state
+./dots plugins available        # registry: every known plugin (installed/available)
+./dots plugins add <id>         # fetch + deploy by convention + enable
+./dots plugins remove <id>
+./dots plugins enable <id>
+./dots plugins disable <id>
+```
+
+Plugins install from the **registry** (`equisdots/plugins` → `registry.json`):
+`dots plugins add <id>` resolves the source (owner/repo + optional path),
+fetches it, deploys it by the standard convention (UI face into the shell
+tree, runtime subset into `~/.config/hypr/plugins/<id>/`) and enables it;
+`compat` is enforced (`--force` overrides). Plugins that declare `standalone`
+entries get a root-level launcher (`plugin-<id>-<entry>.qml`) so their
+standalone QML runs with the shell tree as the config root. Settings →
+Plugins lists the available ones too (with an Install button), reading the
+registry copy that `dots` deploys into the shell tree.
+
+`dots install/update` also deploys the **default plugins** (`DEFAULT_PLUGINS`:
+`screenshots` — Print binds + overlay + recording; `timex` — calendar/weather
+panel + bar island; `rss-reader` — feed reader panel; `clipboard`;
+`quicknotes`; `file-search`; `sysmon` — CPU/RAM bar island, its floating
+monitor is opt-in) through the same convention without touching the toggle,
+so existing users keep the features.
+
+> Experimental phase: the registry and the plugin sources live on
+> `branch/experimental` (override with `EQUISDOTS_PLUGIN_BRANCH=main` after the
+> standard merges).
+
+Nyx is plugin #1: `dots install` places its `plugin.json` in
+`~/.config/hypr/plugins/nyx/`.
 
 ### Fresh machine
 
