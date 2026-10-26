@@ -71,6 +71,7 @@ enable/disable toggle. From the CLI:
 ./dots plugins                  # installed: id, name, version, type, state
 ./dots plugins available        # registry: every known plugin (installed/available)
 ./dots plugins add <id>         # fetch + deploy by convention + enable
+./dots plugins add --all        # fetch + deploy every registry plugin
 ./dots plugins remove <id>
 ./dots plugins enable <id>
 ./dots plugins disable <id>
@@ -80,7 +81,12 @@ Plugins install from the **registry** (`equisdots/plugins` → `registry.json`):
 `dots plugins add <id>` resolves the source (owner/repo + optional path),
 fetches it, deploys it by the standard convention (UI face into the shell
 tree, runtime subset into `~/.config/hypr/plugins/<id>/`) and enables it;
-`compat` is enforced (`--force` overrides). Plugins that declare `standalone`
+`compat` is enforced (`--force` overrides). `dots plugins add --all` installs
+only the plugins that are missing, fetching each needed source repo once;
+already-installed plugins (managed or user-owned) are skipped untouched, a
+half-installed managed plugin is repaired, new plugins are left disabled, and
+re-running the command retries only the missing/failed ones (`--force` also
+installs entries flagged incompatible). Plugins that declare `standalone`
 entries get a root-level launcher (`plugin-<id>-<entry>.qml`) so their
 standalone QML runs with the shell tree as the config root. Settings →
 Plugins lists the available ones too (with an Install button), reading the
