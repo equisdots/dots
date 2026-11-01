@@ -100,6 +100,13 @@ fetch_repo() {
         elif git -C "$BASE/$name" fetch --depth 1 origin "$branch" --quiet 2>/dev/null \
              && git -C "$BASE/$name" reset --hard FETCH_HEAD --quiet; then
             ok "$name updated"
+        elif [[ "$name" == "plugins" && "$branch" != "main" ]] \
+             && git -C "$BASE/$name" fetch --depth 1 origin main --quiet 2>/dev/null \
+             && git -C "$BASE/$name" checkout -B main FETCH_HEAD --quiet; then
+            # The experimental plugin hub branch was merged into main and
+            # deleted upstream; follow the surviving default instead of
+            # warning on every update.
+            ok "$name updated (branch $branch is gone; switched to main)"
         else
             warn "$name: fetch failed (network?); using the existing checkout"
         fi
