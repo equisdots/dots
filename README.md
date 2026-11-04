@@ -12,7 +12,7 @@ sync.
 | [shell](https://github.com/equisdots/shell) | Quickshell UI (bar, panels, editor, popups) | `~/.config/hypr/scripts/quickshell` |
 | [nyx](https://github.com/equisdots/nyx) | Mascot island / notch + control center (species, dock, stats) | `.../quickshell/ui/nyx` |
 | [palettes](https://github.com/equisdots/palettes) | Color palettes (JSON set + schema) | `.../quickshell/dock/palettes` |
-| [davincix](https://github.com/equisdots/davincix) | Wallpaper fetch/apply kernel | `~/.local/bin/davincix` |
+| [davinci](https://github.com/equisdots/davinci) | Wallpaper fetch/apply kernel | `~/.local/bin/davinci` (`davincix` compatibility wrapper) |
 | [theme-sync](https://github.com/equisdots/theme-sync) | Cross-app theme regeneration | `~/.local/bin/theme-sync` |
 | [timex](https://github.com/equisdots/timex) | Time & weather engine (providers, calendar popup UI, settings tab) | engine `~/.local/share/equisdots/timex` + `~/.local/bin/timex`; UI → `.../quickshell/ui/timex` |
 | [xturing](https://github.com/equisdots/xturing) | Terminal UI (ratatui) for the settings panel: every option of SUPER+SHIFT+D, search palette, mouse/touch | `~/.local/bin/xturing` (built with cargo; cache in `~/.cache/equisdots/xturing-build`) |
@@ -174,7 +174,7 @@ or manually.
 - `xwww-daemon` — wallpaper daemon; use [x-ports/xwww](https://github.com/x-ports/xwww)
   (fork of awww with the extra transitions) or `./scripts/install-xwww.sh`
   to build and install it from source
-- `mpvpaper` — video wallpapers (davincix)
+- `mpvpaper` — video wallpapers (davinci)
 - `Hack Nerd Font` — UI glyphs
 
 `dots doctor` reports what is missing.
