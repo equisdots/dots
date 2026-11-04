@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Rename the wallpaper kernel repository to `equisdots/davinci` and install it under `~/.local/share/equisdots/davinci`.
+- Migrate an existing `~/.local/share/equisdots/davincix` clone on install/update, keep `~/.local/bin/davincix` as a compatibility wrapper, and remove the stale clone on reset.
+
+
 All notable changes to the equisdots meta installer and updater are documented
 here. Dates use YYYY-MM-DD.
 
