@@ -315,8 +315,18 @@ WRAP
             # nyx) deploys through the generic convention: the whole repo is
             # the UI face (shell tree) and the runtime subset (manifest,
             # hypr.lua, scripts/) goes to the registry. No per-plugin cases.
+            #
+            # Nyx is part of the base but starts disabled on a fresh Hyprland
+            # install; the seed is flipped once, only when neither plugin tree
+            # exists yet. Existing users keep their state (including installs
+            # that still hold the old mascots block in the core settings). The
+            # niri meta seeds Nyx from nyx/defaults.json and is unaffected.
             if [[ -f "$BASE/$name/plugin.json" ]]; then
-                deploy_plugin "$name" "$BASE/$name"
+                if [[ "$name" == "nyx" && ! -d "$HYPR/plugins/nyx" && ! -d "$QS/ui/plugins/nyx" ]]; then
+                    deploy_plugin "$name" "$BASE/$name" true
+                else
+                    deploy_plugin "$name" "$BASE/$name"
+                fi
             fi ;;
     esac
 }
@@ -902,8 +912,8 @@ plugin_toggle_exists() { # <toggle path>
 #   whole plugin   -> the shell tree UI face  ($QS/ui/plugins/<id>)
 #   runtime subset -> the registry            ($HYPR/plugins/<id>:
 #                                               plugin.json, hypr.lua, scripts/)
-deploy_plugin() { # <id> <source dir>
-    local id="$1" src="$2"
+deploy_plugin() { # <id> <source dir> [disable_on_seed]
+    local id="$1" src="$2" disable_on_seed="${3:-false}"
     [[ -f "$src/plugin.json" ]] || die "plugins: no plugin.json in $src"
     # Id integrity (local, no CI): the fetched manifest must declare exactly
     # the requested id — a source can never be deployed under another identity.
@@ -935,6 +945,22 @@ deploy_plugin() { # <id> <source dir>
         cp -f "$src/$defs" "$HYPR/plugins/$id/defaults.json" || return 1
         if [[ ! -f "$HYPR/plugins/$id/settings.json" ]]; then
             cp -f "$src/$defs" "$HYPR/plugins/$id/settings.json" || return 1
+            # Base-install policy (Hyprland): Nyx is installed but disabled on
+            # a fresh machine. Only the seeded file is touched, so a later
+            # install/update never flips a user's choice.
+            if [[ "$disable_on_seed" == true ]]; then
+                local seed_tmp seed_toggle seed_path
+                seed_toggle="$(plugin_toggle_of "$src/plugin.json" "$id")"
+                seed_path="$(jq -nc --arg t "$seed_toggle" '$t | split(".")')"
+                seed_tmp="$(mktemp "$HYPR/plugins/$id/settings.json.tmp.XXXXXX")"
+                if jq --argjson p "$seed_path" 'setpath($p; false)' \
+                      "$HYPR/plugins/$id/settings.json" > "$seed_tmp" 2>/dev/null; then
+                    mv "$seed_tmp" "$HYPR/plugins/$id/settings.json"
+                else
+                    rm -f "$seed_tmp"
+                    warn "plugin $id: could not disable the seeded toggle; leaving it enabled"
+                fi
+            fi
             ok "plugin $id: settings.json seeded from $defs"
         fi
     fi

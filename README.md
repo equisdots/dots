@@ -104,7 +104,11 @@ so existing users keep the features.
 > standard merges).
 
 Nyx is plugin #1: `dots install` places its `plugin.json` in
-`~/.config/hypr/plugins/nyx/`.
+`~/.config/hypr/plugins/nyx/`. On a **fresh Hyprland install** it is seeded
+**disabled** (`~/.config/hypr/plugins/nyx/settings.json → mascots.enabled =
+false`) so the base ships it without mounting the island; enable it from
+Settings → Plugins. Existing installs keep their chosen state. The niri stack
+seeds Nyx from its own defaults and is unaffected.
 
 ### Fresh machine
 
