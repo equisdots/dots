@@ -2,7 +2,7 @@
 # Install xwww (fork of awww with extra transitions): checksum-verified
 # prebuilt release for this arch, with a source-build fallback.
 # Requires: curl, tar and sudo; rust/cargo only for the fallback build.
-# Installs only the two binaries davincix uses (client `xwww` and daemon
+# Installs only the two binaries davinci uses (client `xwww` and daemon
 # `xwww-daemon`) in /usr/local/bin.
 # Env: XWWW_VERSION overrides the release tag (default v0.13.1).
 set -euo pipefail
