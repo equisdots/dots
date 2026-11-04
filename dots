@@ -487,12 +487,31 @@ reset_payload() {
     fi
 }
 
+# The running dots checkout cannot be rewritten while bash is reading it.
+# Reset re-executes the fetched script from a temporary copy; that copy can
+# then replace the managed checkout without corrupting the running parser.
+reexec_reset_from_origin() {
+    [[ "${DOTS_RESET_REEXEC:-}" == "1" ]] && return 0
+    local repo="$BASE/dots" tmp
+    [[ -d "$repo/.git" ]] || return 0
+    if ! git -C "$repo" fetch --depth 1 origin main --quiet 2>/dev/null; then
+        warn "reset: could not fetch dots from origin/main; aborting before changing the system"
+        return 1
+    fi
+    tmp="$(mktemp "${TMPDIR:-/tmp}/dots-reset.XXXXXX")" || return 1
+    if ! git -C "$repo" show FETCH_HEAD:dots > "$tmp" 2>/dev/null; then
+        rm -f "$tmp"
+        warn "reset: could not read the fetched dots script; aborting"
+        return 1
+    fi
+    chmod +x "$tmp"
+    DOTS_RESET_REEXEC=1 exec bash "$tmp" reset
+}
+
 reset_clones() {
     local r
     for r in "${REPOS[@]}"; do
-        # Never delete the running dots checkout: bash reads this script
-        # incrementally and rewriting it mid-run is unsafe. fetch_repo hard-
-        # resets it anyway, so it still lands on the latest origin/main.
+        # The running checkout was already replaced by the re-exec above.
         [[ "$r" == "dots" ]] && continue
         if [[ -d "$BASE/$r" ]]; then
             rm -rf "$BASE/$r"
@@ -512,6 +531,17 @@ cmd_reset() {
         "") ;;
         *) die "reset: no options (usage: dots reset)" ;;
     esac
+    if ! reexec_reset_from_origin; then
+        return 1
+    fi
+    # The temporary copy is safe to run after replacing its own checkout.
+    if [[ "${DOTS_RESET_REEXEC:-}" == "1" && -d "$BASE/dots/.git" ]]; then
+        if git -C "$BASE/dots" reset --hard FETCH_HEAD --quiet 2>/dev/null; then
+            ok "dots: checkout replaced from origin/main"
+        else
+            warn "dots: could not replace the checkout; continuing with the fetched script"
+        fi
+    fi
     reset_payload
     reset_clones
     cmd_install
