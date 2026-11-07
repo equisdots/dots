@@ -37,7 +37,7 @@ CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
 HYPR="$CFG/hypr"
 QS="$HYPR/scripts/quickshell"
 BIN="$HOME/.local/bin"
-REPOS=(dots palettes theme-sync davinci shell plugin-api plugin-sdk plugins nyx hyprland xturing login)
+REPOS=(dots palettes theme-sync davinci shell plugin-api plugin-sdk plugins nyx hyprland xturing login background)
 # Plugins that ship with the stack: deployed on every install/update through
 # the registry convention (no toggle write; the manifest's defaultEnabled
 # decides the state, so existing users keep the feature).
@@ -47,6 +47,10 @@ DEFAULT_PLUGINS=(screenshots timex rss-reader clipboard quicknotes file-search s
 # is what the shell's Plugins page reads to list available plugins.
 HUB="$BASE/plugins"
 REGISTRY="$HUB/registry.json"
+# Scene source. `background` is a content repo (scenes/ committed, wallpaper
+# images live in its release asset). It is cloned with the rest of the stack;
+# DOTS_SCENES_SOURCE can point at another checkout for tests/offline use.
+SCENES_SOURCE="${DOTS_SCENES_SOURCE:-$BASE/background}"
 # The plugin hub (standard, registry, plugin sources) tracks `main`. If the
 # local plugins checkout is still on the pre-merge `branch/experimental`, follow
 # it automatically so an in-progress experimental install keeps working; an
@@ -81,6 +85,7 @@ Usage: dots <command>
   doctor     check dependencies, clones and installed paths
   list       show repo status (present / missing / dirty)
   plugins    add [--all]/remove/available/list + enable/disable (install registry)
+  scenes     list/download/delete interactive scenes from background/
   uninstall  remove links and the updater timer (config files are kept)
 
 Remote bootstrap:
@@ -264,6 +269,8 @@ sync_repo() {
                 mkdir -p "$QS/dock/palettes/community"
                 cp -f "$BASE/palettes/community"/*.json "$QS/dock/palettes/community/" 2>/dev/null || true
             fi ;;
+        background)
+            msg "background: scenes source -> $BASE/background (no payload)" ;;
         theme-sync)
             mkdir -p "$BIN"
             cat > "$BIN/theme-sync" <<WRAP
@@ -1331,6 +1338,276 @@ plugins_remove() { # <id>
     if command -v hyprctl >/dev/null 2>&1; then hyprctl reload >/dev/null 2>&1 || true; fi
 }
 
+
+# ── scenes: list/download/delete interactive wallpapers ─────────────────────
+# Source is the `background` checkout (or DOTS_SCENES_SOURCE). Installation is
+# additive: an existing scene is never overwritten unless --force is explicit.
+# The destination comes from settings.json -> wallpaperDir.
+scenes_refresh_picker() {
+    # The picker scans this cache on open; rebuilding it here makes new/deleted
+    # scenes visible without restarting Quickshell or pressing SUPER+R.
+    if command -v davinci >/dev/null 2>&1; then
+        davinci thumbs >/dev/null 2>&1 || warn "scenes: could not refresh the picker cache"
+    fi
+}
+
+scenes_ensure_source() {
+    if [[ -f "$SCENES_SOURCE/scenes/index.json" ]]; then
+        return 0
+    fi
+    if [[ -n "${DOTS_SCENES_SOURCE:-}" ]]; then
+        die "scenes: source has no scenes/index.json: $SCENES_SOURCE"
+    fi
+    msg "scenes: fetching the background source"
+    fetch_repo background || die "scenes: could not fetch background"
+    SCENES_SOURCE="$BASE/background"
+    [[ -f "$SCENES_SOURCE/scenes/index.json" ]] \
+        || die "scenes: background checkout has no scenes/index.json"
+}
+
+scenes_index() { printf '%s/scenes/index.json\n' "$SCENES_SOURCE"; }
+
+scenes_dest() {
+    local dest
+    dest="$(jq -r '.wallpaperDir // empty' "$HYPR/settings.json" 2>/dev/null || true)"
+    [[ -n "$dest" ]] || dest="$HYPR/wallpapers"
+    if [[ "$dest" == "~/"* ]]; then dest="$HOME/${dest#\~/}"; fi
+    if [[ "$dest" == "~" ]]; then dest="$HOME"; fi
+    printf '%s\n' "$dest"
+}
+
+scenes_valid_slug() {
+    [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]]
+}
+
+scenes_source_rel() { # <slug>
+    jq -r --arg slug "$1" '.scenes[]? | select(.slug == $slug) | .path // empty' \
+        "$(scenes_index)" 2>/dev/null | head -n1
+}
+
+scenes_is_local() { # <dest> <slug>
+    [[ -f "$1/$2/scene.js" ]]
+}
+
+scenes_local_slugs() { # <dest>
+    local dest="$1"
+    find "$dest" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null \
+        | while IFS= read -r -d '' d; do
+              [[ -f "$d/scene.js" ]] && basename "$d"
+          done | sort -u
+}
+
+scenes_print_row() { # <status> <slug> <name>
+    printf '  %-11s %-30s %s\n' "$1" "$2" "$3"
+}
+
+scenes_list() { # <mode: all|installed|available>
+    local mode="$1" dest slug rel name
+    scenes_ensure_source
+    dest="$(scenes_dest)"
+    local -A local_map=()
+    local -A index_name=()
+    while IFS=$'\t' read -r slug rel name; do
+        [[ -n "$slug" ]] || continue
+        index_name["$slug"]="$name"
+    done < <(jq -r '.scenes[]? | [.slug, (.path // ""), (.name // .slug)] | @tsv' "$(scenes_index)")
+    while IFS= read -r slug; do
+        [[ -n "$slug" ]] && local_map["$slug"]=1
+    done < <(scenes_local_slugs "$dest")
+
+    printf '\n  %-11s %-30s %s\n' "STATE" "SLUG" "NAME"
+    while IFS=$'\t' read -r slug rel name; do
+        [[ -n "$slug" ]] || continue
+        if [[ -n "${local_map[$slug]:-}" ]]; then
+            [[ "$mode" == "available" ]] && continue
+            scenes_print_row "installed" "$slug" "$name"
+        else
+            [[ "$mode" == "installed" ]] && continue
+            scenes_print_row "available" "$slug" "$name"
+        fi
+    done < <(jq -r '.scenes[]? | [.slug, (.path // ""), (.name // .slug)] | @tsv' "$(scenes_index)")
+    # User/third-party scenes in the wallpaper directory that are not in the catalog.
+    while IFS= read -r slug; do
+        [[ -n "$slug" && -z "${index_name[$slug]:-}" ]] || continue
+        [[ "$mode" == "available" ]] && continue
+        scenes_print_row "installed" "$slug" "local scene"
+    done < <(scenes_local_slugs "$dest")
+    printf '\n'
+}
+
+scenes_install_one() { # <slug> <force>
+    local slug="$1" force="${2:-false}" rel src dest tmp
+    scenes_ensure_source
+    scenes_valid_slug "$slug" || die "scenes: invalid scene name: $slug"
+    rel="$(scenes_source_rel "$slug")"
+    [[ -n "$rel" ]] || die "scenes: unknown scene: $slug (try: dots scenes list)"
+    src="$SCENES_SOURCE/$rel"
+    [[ "$src" == "$SCENES_SOURCE/scenes/"* ]]         || die "scenes: refusing scene path outside the catalog: $rel"
+    [[ -f "$src/scene.js" ]] || die "scenes: source scene has no scene.js: $src"
+    dest="$(scenes_dest)"
+    mkdir -p "$dest"
+
+    if [[ -e "$dest/$slug" ]]; then
+        if [[ ! -f "$dest/$slug/scene.js" ]]; then
+            warn "scenes: $dest/$slug exists but is not a scene; refusing to overwrite"
+            return 1
+        fi
+        if [[ "$force" != true ]]; then
+            warn "scenes: $slug is already installed; skipped"
+            return 0
+        fi
+        msg "scenes: replacing $slug"
+    fi
+
+    tmp="$dest/.scene-tmp.$$.$slug"
+    rm -rf -- "$tmp"
+    if ! cp -a "$src" "$tmp"; then
+        rm -rf -- "$tmp"
+        warn "scenes: failed to copy $slug"
+        return 1
+    fi
+    [[ -e "$dest/$slug" ]] && rm -rf -- "$dest/$slug"
+    if ! mv -- "$tmp" "$dest/$slug"; then
+        rm -rf -- "$tmp"
+        warn "scenes: failed to install $slug"
+        return 1
+    fi
+    ok "scene $slug installed"
+}
+
+scenes_download() { # <all> <force> [slug...]
+    local all="$1" force="$2"; shift 2
+    local slug dest rel name installed=0 skipped=0 failed=0
+    local -a want=("$@")
+    scenes_ensure_source
+    dest="$(scenes_dest)"
+
+    if [[ "$all" == true ]]; then
+        while IFS=$'\t' read -r slug rel name; do
+            [[ -n "$slug" ]] || continue
+            if scenes_is_local "$dest" "$slug" && [[ "$force" != true ]]; then
+                skipped=$((skipped + 1))
+                continue
+            fi
+            if scenes_install_one "$slug" "$force"; then
+                installed=$((installed + 1))
+            else
+                failed=$((failed + 1))
+            fi
+        done < <(jq -r '.scenes[]? | [.slug, (.path // ""), (.name // .slug)] | @tsv' "$(scenes_index)")
+        ok "scenes: $installed downloaded, $skipped already installed, $failed failed"
+        [[ "$failed" -eq 0 ]]
+        return
+    fi
+
+    (( ${#want[@]} > 0 )) || die "usage: dots scenes download <slug> | --all [--force]"
+    for slug in "${want[@]}"; do
+        if scenes_install_one "$slug" "$force"; then
+            installed=$((installed + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done
+    [[ "$failed" -eq 0 ]]
+}
+
+scenes_delete() { # <force> <all> [slug...]
+    local force="$1" all="$2"; shift 2
+    local dest state slug removed=0 failed=0
+    local -a want=("$@")
+    dest="$(scenes_dest)"
+    state="${XDG_STATE_HOME:-$HOME/.local/state}/quickshell/wallpaper_picker/current_scene"
+
+    if [[ "$all" == true ]]; then
+        while IFS= read -r slug; do [[ -n "$slug" ]] && want+=("$slug"); done \
+            < <(scenes_local_slugs "$dest")
+        [[ "$force" == true ]] || die "scenes delete --all requires --force"
+    fi
+    (( ${#want[@]} > 0 )) || die "usage: dots scenes delete <slug> [--force]"
+
+    for slug in "${want[@]}"; do
+        scenes_valid_slug "$slug" || { warn "scenes: invalid scene name: $slug"; failed=$((failed + 1)); continue; }
+        if ! scenes_is_local "$dest" "$slug"; then
+            warn "scenes: not installed: $slug"
+            failed=$((failed + 1))
+            continue
+        fi
+        if [[ "$force" != true && -f "$state" && "$(cat "$state" 2>/dev/null || true)" == "$dest/$slug" ]]; then
+            warn "scenes: $slug is the active scene; use --force to delete it"
+            failed=$((failed + 1))
+            continue
+        fi
+        if rm -rf -- "$dest/$slug"; then
+            ok "scene $slug deleted"
+            removed=$((removed + 1))
+        else
+            warn "scenes: failed to delete $slug"
+            failed=$((failed + 1))
+        fi
+    done
+    [[ "$failed" -eq 0 ]]
+}
+
+cmd_scenes() {
+    local action="list" mode="all" all=false force=false slug
+    local -a slugs=()
+    if [[ $# -gt 0 && "$1" != --* ]]; then
+        case "$1" in
+            list|ls)         action="list" ;;
+            download|dl)     action="download" ;;
+            delete|remove|rm) action="delete" ;;
+            -h|--help)       action="help" ;;
+            *)               die "scenes: unknown subcommand: $1 (list|download|delete)" ;;
+        esac
+        shift
+    fi
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --download|-d) action="download" ;;
+            --delete|--remove|--rm) action="delete" ;;
+            --list|-l) action="list" ;;
+            --all|-a) all=true ;;
+            --installed|-i) mode="installed" ;;
+            --available|-A) mode="available" ;;
+            --force|-f) force=true ;;
+            -h|--help) action="help" ;;
+            -*) die "scenes: unknown option: $1 (try: dots scenes --help)" ;;
+            *) slugs+=("$1") ;;
+        esac
+        shift
+    done
+    case "$action" in
+        list)
+            [[ ${#slugs[@]} -eq 0 ]] || die "scenes list does not take scene names"
+            scenes_list "$mode" ;;
+        download)
+            [[ "$all" == true || ${#slugs[@]} -gt 0 ]] || die "usage: dots scenes download <slug> | --all [--force]"
+            if scenes_download "$all" "$force" "${slugs[@]}"; then
+                scenes_refresh_picker
+            fi ;;
+        delete)
+            [[ "$all" == true || ${#slugs[@]} -gt 0 ]] || die "usage: dots scenes delete <slug> [--force]"
+            if scenes_delete "$force" "$all" "${slugs[@]}"; then
+                scenes_refresh_picker
+            fi ;;
+        help)
+            cat <<'EOF'
+Usage: dots scenes [list|download|delete] [options]
+
+  dots scenes list [--installed|--available]
+  dots scenes download <slug> [--force]
+  dots scenes download --all [--force]
+  dots scenes delete <slug> [--force]
+  dots scenes delete --all --force
+
+Downloads come from the background repository checkout. Existing scenes are
+never overwritten without --force; --all downloads only missing scenes.
+DOTS_SCENES_SOURCE=<path> selects another background checkout.
+EOF
+            ;;
+    esac
+}
+
 cmd_uninstall() {
     msg "removing links and the updater timer; config files and clones are kept"
     if [[ -x "$HYPR/scripts/dotfiles-update.sh" ]]; then
@@ -1353,6 +1630,8 @@ case "${1:-help}" in
     doctor)    cmd_doctor ;;
     list)      cmd_list ;;
     plugins)   shift; cmd_plugins "$@" ;;
+    scenes)    shift; cmd_scenes "$@" ;;
+    scennes)   shift; cmd_scenes "$@" ;;
     uninstall) cmd_uninstall ;;
     *) usage ;;
 esac

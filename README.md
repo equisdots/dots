@@ -17,6 +17,7 @@ sync.
 | [timex](https://github.com/equisdots/timex) | Time & weather engine (providers, calendar popup UI, settings tab) | engine `~/.local/share/equisdots/timex` + `~/.local/bin/timex`; UI → `.../quickshell/ui/timex` |
 | [xturing](https://github.com/equisdots/xturing) | Terminal UI (ratatui) for the settings panel: every option of SUPER+SHIFT+D, search palette, mouse/touch | `~/.local/bin/xturing` (built with cargo; cache in `~/.cache/equisdots/xturing-build`) |
 | [login](https://github.com/equisdots/login) | Static minimal SDDM greeter | `/usr/share/sddm/themes/x` (one-time, `dots system`) |
+| [background](https://github.com/equisdots/background) | Interactive xwww scenes (source checkout; images use the release pack) | `~/.local/share/equisdots/background` |
 
 Repos are cloned under `~/.local/share/equisdots/<repo>`.
 
@@ -31,6 +32,7 @@ cd dots
 ./dots doctor      # check dependencies, clones, installed paths and plugin id integrity
 ./dots list        # repo status (clean / dirty / missing)
 ./dots plugins     # install and manage plugins (add/remove/available/list/...)
+./dots scenes      # list, download and delete interactive scenes
 ./dots update      # pull everything and re-apply
 ./dots reset       # forced clean reinstall of the payload (user data kept)
 ./dots uninstall   # remove the created links and the updater timer
@@ -57,6 +59,29 @@ Both `install`/`update`/`reset` normalize a leading `~` in `settings.json`'s
 `wallpaperDir` to an absolute path, so the wallpaper picker always finds the
 collection (a literal `~` left the grid empty and failed every apply with
 `File not found`).
+
+## Scenes
+
+`dots scenes` manages the interactive scenes committed in
+[`equisdots/background`](https://github.com/equisdots/background) and installs
+them into the wallpaper collection (`settings.json → wallpaperDir`).
+
+```sh
+./dots scenes                         # list installed + available scenes
+./dots scenes list --installed
+./dots scenes list --available
+./dots scenes download <slug>         # one by one
+./dots scenes download --all          # only missing scenes, no overwrite
+./dots scenes download --all --force  # refresh installed scenes too
+./dots scenes delete <slug>           # refuses the active scene unless --force
+./dots scenes delete --all --force    # remove every local scene
+```
+
+`--all` is additive: it never overwrites a local scene unless `--force` is
+explicit. A non-scene directory with the same slug is never touched. The
+`background` source is fetched on demand; `DOTS_SCENES_SOURCE=<path>` points at
+another checkout for offline/testing use. `dots scennes` is accepted as a
+compatibility alias.
 
 ## Plugins
 
