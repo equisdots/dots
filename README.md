@@ -100,7 +100,15 @@ enable/disable toggle. From the CLI:
 ./dots plugins remove <id>
 ./dots plugins enable <id>
 ./dots plugins disable <id>
+./dots plugins migrate          # clean the legacy core plugins.<id>.enabled mirror
 ```
+
+`enable`/`disable` resolve the effective toggle from the plugin manifest
+(`toggle`, else `<scope>.enabled`, else `plugins.<id>.enabled`) and write it to
+the plugin's **own** `settings.json`; the core `settings.json` is never used
+for enablement. `migrate` removes the old `plugins.<id>.enabled` keys from the
+core settings while preserving `plugins.<id>.config` (the settings-page
+switch). It runs automatically before other `dots plugins` commands.
 
 Plugins install from the **registry** (`equisdots/plugins` → `registry.json`):
 `dots plugins add <id>` resolves the source (owner/repo + optional path),
