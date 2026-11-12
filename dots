@@ -15,7 +15,7 @@
 #   doctor     check dependencies, clones and installed paths
 #   list       show repo status (present / missing / dirty)
 #   plugins    install and manage plugins (add [--all], remove, available,
-#              list, enable/disable) from the equisdots plugin registry
+#              list, enable/disable, migrate) from the equisdots plugin registry
 #   uninstall  remove links and the updater timer (config files are kept)
 #
 # Remote bootstrap:
@@ -84,7 +84,7 @@ Usage: dots <command>
   system     run the hyprland installer (packages, fonts, login, PAM, xwww, ...)
   doctor     check dependencies, clones and installed paths
   list       show repo status (present / missing / dirty)
-  plugins    add [--all]/remove/available/list + enable/disable (install registry)
+  plugins    add [--all]/remove/available/list + enable/disable/migrate (install registry)
   scenes     list/download/delete interactive scenes from background/
   uninstall  remove links and the updater timer (config files are kept)
 
@@ -750,8 +750,8 @@ cmd_doctor() {
 #
 #  - installed: folders with a plugin.json in $HYPR/plugins (managed by dots)
 #    + $HYPR/plugins-user (user, wins on id). Enable state = the plugin's
-#    toggle path in settings.json (plugin.json → "toggle", default
-#    plugins.<id>.enabled).
+#    toggle path in ITS OWN settings.json (plugin.json → "toggle", else
+#    "<scope>.enabled", else "plugins.<id>.enabled"; defaultEnabled fallback).
 #  - available: the install registry ($HUB/registry.json, equisdots/plugins)
 #    lists every known plugin and where it comes from. `dots plugins add`
 #    resolves a source (owner/repo + optional path), fetches it, deploys by
@@ -910,40 +910,54 @@ plugin_compat() { # <plugin.json path>
     printf '%s' "${out:-}" | jq -r '.state // "ok"' 2>/dev/null || printf 'ok'
 }
 
-# The plugin's effective settings toggle: manifest "toggle" or the default.
+# The plugin's effective settings toggle, resolved like the shell scanner:
+# manifest "toggle", else "<scope>.enabled", else "plugins.<id>.enabled".
 plugin_toggle_of() { # <plugin.json path> <id>
-    local t=""
+    local t="" s=""
     if [[ -f "$1" ]]; then
         t="$(jq -r '.toggle // empty' "$1" 2>/dev/null || true)"
+        s="$(jq -r '.scope // empty' "$1" 2>/dev/null || true)"
     fi
-    [[ -n "$t" ]] || t="plugins.$2.enabled"
+    [[ -n "$t" ]] || t="${s:-plugins.$2}.enabled"
     printf '%s' "$t"
 }
 
-# Write one toggle atomically (the same jq setpath contract the shell uses).
-plugin_write_toggle() { # <toggle path> <true|false>
-    local toggle="$1" val="$2" path tmp
-    [[ -f "$HYPR/settings.json" ]] || die "plugins: $HYPR/settings.json not found (run: dots install)"
+# Write one toggle atomically into the plugin's OWN settings file. The core
+# settings.json is never touched here: the shell resolves enablement from
+# <plugin>/settings.json (manifest toggle, scope or plugins.<id>).
+plugin_write_toggle() { # <plugin dir> <toggle path> <true|false>
+    local dir="$1" toggle="$2" val="$3" f path tmp
+    [[ -n "$dir" && -n "$toggle" ]] || return 1
+    f="$dir/settings.json"
+    mkdir -p "$dir" || return 1
+    if [[ -s "$f" ]]; then
+        jq -e . "$f" >/dev/null 2>&1 || {
+            warn "plugin $(basename "$dir"): invalid $f"
+            return 1
+        }
+    else
+        printf '{}\n' > "$f" || return 1
+    fi
     path="$(jq -nc --arg t "$toggle" '$t | split(".")')"
-    tmp="$(mktemp "$HYPR/settings.json.tmp.XXXXXX")"
-    if jq --argjson p "$path" --argjson v "$val" 'setpath($p; $v)' \
-          "$HYPR/settings.json" > "$tmp" 2>/dev/null; then
-        mv "$tmp" "$HYPR/settings.json"
+    tmp="$(mktemp "$f.tmp.XXXXXX")" || return 1
+    if jq --argjson p "$path" --argjson v "$val" 'setpath($p; $v)' "$f" > "$tmp" 2>/dev/null; then
+        mv "$tmp" "$f"
     else
         rm -f "$tmp"
-        die "plugins: could not write settings.json"
+        warn "plugin $(basename "$dir"): could not write $toggle"
+        return 1
     fi
 }
 
-# True when the effective toggle key already exists in settings.json (its
-# value may be true or false). Used by `add --all` to preserve the state of a
-# partial install while still disabling brand-new ones.
-plugin_toggle_exists() { # <toggle path>
-    local toggle="$1"
-    [[ -f "$HYPR/settings.json" ]] || return 1
+# True when the effective toggle key already exists in the plugin's settings
+# file (its value may be true or false). Used by `add --all` to preserve the
+# state of a partial install while still disabling brand-new ones.
+plugin_toggle_exists() { # <plugin dir> <toggle path>
+    local dir="$1" toggle="$2" f="$1/settings.json"
+    [[ -f "$f" ]] || return 1
     jq -e --arg t "$toggle" \
         '(try getpath($t | split(".")) catch null) != null' \
-        "$HYPR/settings.json" >/dev/null 2>&1
+        "$f" >/dev/null 2>&1
 }
 
 # Deploy by the standard convention (equisdots/plugins → docs/plugins.md §6):
@@ -1025,26 +1039,29 @@ LAUNCH
     done < <(jq -r '(.standalone // [])[]' "$src/plugin.json" 2>/dev/null)
 }
 
-plugins_settings() {
-    local f="$HYPR/settings.json"
-    if [[ -f "$f" ]] && jq -e . "$f" >/dev/null 2>&1; then jq -c . "$f"; else printf '{}'; fi
-}
-
 # TSV: id, name, version, type, state, dir, toggle, compat (user dir first: wins).
+# Enablement comes from the plugin's OWN settings.json, exactly like the shell
+# scanner: manifest toggle -> <scope>.enabled -> plugins.<id>.enabled, with
+# defaultEnabled as the fallback. The core settings.json is not read here.
 plugins_scan() {
-    local sobj d e comp
-    sobj="$(plugins_settings)"
+    local pset d e comp
     for d in "$HYPR/plugins-user" "$HYPR/plugins"; do
         [[ -d "$d" ]] || continue
         for e in "$d"/*/; do
             [[ -f "${e}plugin.json" ]] || continue
+            pset='{}'
+            if [[ -f "${e}settings.json" ]]; then
+                pset="$(jq -c . "${e}settings.json" 2>/dev/null || echo '{}')"
+                [ -n "$pset" ] || pset='{}'
+            fi
             comp="$(plugin_compat "${e}plugin.json")"
-            jq -r --arg base "${e%/}" --argjson s "$sobj" --arg comp "$comp" '
+            jq -r --arg base "${e%/}" --argjson pset "$pset" --arg comp "$comp" '
                 . as $m
                 | select(($m.id // "") != "")
-                | ($m.toggle // ("plugins." + $m.id + ".enabled")) as $t
+                | ($m.scope // ("plugins." + $m.id)) as $scope
+                | ($m.toggle // ($scope + ".enabled")) as $t
                 | ($t | split(".")) as $p
-                | (try ($s | getpath($p)) catch null) as $v
+                | (try ($pset | getpath($p)) catch null) as $v
                 | [ $m.id, ($m.name // $m.id), ($m.version // "-"), ($m.type // "-"),
                     (if (if $v == null then ($m.defaultEnabled // false) else ($v == true) end)
                      then "enabled" else "disabled" end),
@@ -1053,8 +1070,43 @@ plugins_scan() {
     done
 }
 
+# Remove the legacy core-setting mirrors (settings.json -> plugins.<id>.enabled).
+# Enablement belongs to the plugin's own settings file; `plugins.<id>.config`
+# stays because the shell uses it for the settings-page switch. Idempotent and
+# content-compared, so it never rewrites an already-clean file.
+plugin_migrate_legacy() {
+    local f="$HYPR/settings.json" tmp
+    [[ -f "$f" ]] || return 0
+    jq -e . "$f" >/dev/null 2>&1 || return 0
+    jq -e '(.plugins? // {}) | type == "object"' "$f" >/dev/null 2>&1 || return 0
+    tmp="$(mktemp "$f.tmp.XXXXXX")" || return 1
+    if jq '
+        if (.plugins? // null) == null then .
+        else
+          .plugins |= (
+            with_entries(
+              if (.value | type) == "object" then .value |= del(.enabled) else . end
+            )
+            | with_entries(select(.value != {}))
+          )
+          | if (.plugins? // null) == {} then del(.plugins) else . end
+        end
+    ' "$f" > "$tmp" 2>/dev/null; then
+        if cmp -s "$f" "$tmp"; then
+            rm -f "$tmp"
+        else
+            mv "$tmp" "$f"
+        fi
+    else
+        rm -f "$tmp"
+        warn "plugins: could not clean legacy toggles from $f"
+        return 1
+    fi
+}
+
 cmd_plugins() {
     command -v jq >/dev/null 2>&1 || die "plugins: jq is required"
+    plugin_migrate_legacy || true
     local sub="${1:-list}"
     case "$sub" in
         list|"")
@@ -1105,24 +1157,29 @@ cmd_plugins() {
             fi ;;
         remove)
             plugins_remove "${2:-}" ;;
+        migrate)
+            plugin_migrate_legacy \
+                && ok "plugins: legacy toggles cleaned (plugin settings are the source of truth)" ;;
         enable|disable)
-            local id="${2:-}" val=false row toggle comp="" force=false
+            local id="${2:-}" val=false row dir toggle comp="" force=false
             [[ -n "$id" ]] || die "usage: dots plugins enable|disable <id>"
             [[ "${3:-}" == "--force" ]] && force=true
             [[ "$sub" == "enable" ]] && val=true
             row="$(plugins_scan | awk -F'\t' -v id="$id" '$1 == id { print; exit }')"
             [[ -n "$row" ]] || die "plugins: unknown plugin: $id"
+            dir="$(cut -f6 <<< "$row")"
             toggle="$(cut -f7 <<< "$row")"
             comp="$(cut -f8 <<< "$row")"
             if [[ "$val" == "true" && "$comp" == "incompat" && "$force" != "true" ]]; then
                 die "plugins: $id is incompatible with this host (re-run with --force to override)"
             fi
-            plugin_write_toggle "$toggle" "$val"
+            plugin_write_toggle "$dir" "$toggle" "$val" \
+                || die "plugins: could not write $toggle for $id"
             if [[ "$val" == "true" ]]; then ok "plugin $id: enabled"; else ok "plugin $id: disabled"; fi
             if command -v hyprctl >/dev/null 2>&1; then
                 hyprctl reload >/dev/null 2>&1 || true
             fi ;;
-        *) die "plugins: unknown subcommand (list|available|add|remove|enable|disable)" ;;
+        *) die "plugins: unknown subcommand (list|available|add|remove|enable|disable|migrate)" ;;
     esac
 }
 
@@ -1155,7 +1212,8 @@ plugins_add() { # <id> <no_enable true|false> <force true|false>
     deploy_plugin "$id" "$srcdir"
     if [[ "$no_enable" != true ]]; then
         toggle="$(plugin_toggle_of "$srcdir/plugin.json" "$id")"
-        plugin_write_toggle "$toggle" true
+        plugin_write_toggle "$HYPR/plugins/$id" "$toggle" true \
+            || die "plugin $id: could not write $toggle=true"
         ok "plugin $id: enabled ($toggle = true)"
     fi
     if command -v hyprctl >/dev/null 2>&1; then hyprctl reload >/dev/null 2>&1 || true; fi
@@ -1165,9 +1223,9 @@ plugins_add() { # <id> <no_enable true|false> <force true|false>
 # ── plugins add --all: install every MISSING registry plugin ────────────────
 # Already-installed plugins (managed or user-owned) are skipped and left
 # untouched; a partially installed managed plugin is repaired. New plugins are
-# installed disabled, and the toggle is written before the deploy so a failed
-# deploy never leaves an installed plugin without its state. Each deploy runs
-# isolated: one failure is reported and the rest of the registry installs.
+# installed disabled; the toggle is written AFTER deploy so the plugin's
+# defaults seed first, and a failed toggle write rolls a new install back.
+# Each deploy runs isolated: one failure is reported and the rest install.
 # Re-running the command retries only the missing/failed plugins.
 plugins_add_all() { # <force true|false>
     local force="$1"
@@ -1263,15 +1321,6 @@ plugins_add_all() { # <force true|false>
         is_new=false
         if [[ "$has_runtime" == false && "$has_ui" == false ]]; then is_new=true; fi
         toggle="$(plugin_toggle_of "$srcdir/plugin.json" "$id")"
-        # Brand-new installs always start disabled; a repair keeps the user's
-        # existing toggle if it is already present in settings.json.
-        if [[ "$is_new" == true ]] || ! plugin_toggle_exists "$toggle"; then
-            if ! ( plugin_write_toggle "$toggle" false ); then
-                warn "plugin $id: could not write $toggle=false; skipped"
-                failed=$((failed + 1))
-                continue
-            fi
-        fi
 
         # Subshell: an unexpected die() only aborts this plugin. deploy_plugin
         # returns non-zero on the first failed write, and the halves that did
@@ -1286,6 +1335,19 @@ plugins_add_all() { # <force true|false>
             fi
             failed=$((failed + 1))
             continue
+        fi
+        # Brand-new installs always start disabled; a repair keeps the user's
+        # existing toggle. Write AFTER deploy so deploy_plugin can seed the
+        # plugin's defaults first (the toggle lands in the plugin settings).
+        if [[ "$is_new" == true ]] || ! plugin_toggle_exists "$HYPR/plugins/$id" "$toggle"; then
+            if ! plugin_write_toggle "$HYPR/plugins/$id" "$toggle" false; then
+                warn "plugin $id: could not write $toggle=false; skipped"
+                if [[ "$is_new" == true ]]; then
+                    rm -rf "$QS/ui/plugins/$id" "$HYPR/plugins/$id" 2>/dev/null || true
+                fi
+                failed=$((failed + 1))
+                continue
+            fi
         fi
         if [[ "$is_new" == true ]]; then
             ok "plugin $id: installed (disabled)"
@@ -1306,17 +1368,15 @@ plugins_add_all() { # <force true|false>
     [[ "$failed" == "0" ]]
 }
 
-# ── plugins remove: drop the managed copies, switch the toggle off ──────────
-# settings.json keeps the keys (no user-data surgery); user plugins
+# ── plugins remove: drop the managed copies ─────────────────────────────────
+# The plugin's settings live inside its runtime folder and are removed with it;
+# a reinstall starts from the manifest defaults again. User plugins
 # (plugins-user/) are not managed by dots.
 plugins_remove() { # <id>
     local id="$1"
     [[ -n "$id" ]] || die "usage: dots plugins remove <id>"
     local base_dir="$HYPR/plugins/$id" ui_dir="$QS/ui/plugins/$id"
-    local toggle="" found=false entry source repo
-    if [[ -f "$base_dir/plugin.json" ]]; then
-        toggle="$(plugin_toggle_of "$base_dir/plugin.json" "$id")"
-    fi
+    local found=false entry source repo
     if [[ -e "$base_dir" ]]; then rm -rf "$base_dir"; ok "removed $base_dir"; found=true; fi
     if [[ -e "$ui_dir" ]]; then rm -rf "$ui_dir"; ok "removed $ui_dir"; found=true; fi
     if [[ "$found" != true ]]; then
@@ -1325,8 +1385,7 @@ plugins_remove() { # <id>
         fi
         die "plugins: $id is not installed"
     fi
-    plugin_write_toggle "${toggle:-plugins.$id.enabled}" false
-    ok "plugin $id: disabled (${toggle:-plugins.$id.enabled} = false)"
+    ok "plugin $id: removed"
     entry="$(registry_entry "$id" || true)"
     if [[ -n "$entry" ]]; then
         source="${entry%%$'\t'*}"

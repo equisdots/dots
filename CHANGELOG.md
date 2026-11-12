@@ -4,6 +4,8 @@
 
 - Rename the wallpaper kernel repository to `equisdots/davinci` and install it under `~/.local/share/equisdots/davinci`.
 - Migrate an existing `~/.local/share/equisdots/davinci` clone on install/update, keep `~/.local/bin/davinci` as a compatibility wrapper, and remove the stale clone on reset.
+- Fix `dots plugins enable/disable`: resolve the manifest `toggle`/`scope` and write the plugin's own `settings.json`, matching the shell scanner instead of the legacy core `settings.json → plugins.<id>.enabled`.
+- Add `dots plugins migrate` (also run automatically) to remove the legacy core toggle mirror while preserving `plugins.<id>.config`, plus a regression test in `tests/plugins-toggle.sh`.
 
 
 All notable changes to the equisdots meta installer and updater are documented
