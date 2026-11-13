@@ -265,9 +265,13 @@ sync_repo() {
             # (no delete): user-created palettes and live editor edits
             # survive updates.
             cp -f "$BASE/palettes"/*.json "$QS/dock/palettes/" 2>/dev/null || true
+            for doc in LICENSE NOTICE ATTRIBUTION.md; do
+                [[ -f "$BASE/palettes/$doc" ]] && cp -f "$BASE/palettes/$doc" "$QS/dock/palettes/$doc" 2>/dev/null || true
+            done
             if [[ -d "$BASE/palettes/community" ]]; then
                 mkdir -p "$QS/dock/palettes/community"
                 cp -f "$BASE/palettes/community"/*.json "$QS/dock/palettes/community/" 2>/dev/null || true
+                [[ -f "$BASE/palettes/community/README.md" ]] && cp -f "$BASE/palettes/community/README.md" "$QS/dock/palettes/community/README.md" 2>/dev/null || true
             fi ;;
         background)
             msg "background: scenes source -> $BASE/background (no payload)" ;;
