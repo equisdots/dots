@@ -10,7 +10,7 @@
 # Usage: dots <command>
 #   setup      full install: system stack (sudo) + user payload, in one run
 #   install    clone/update every repo and place it in your system
-#   update     git pull every repo and re-apply
+#   update     git pull every repo, re-apply and reload the running shell
 #   system     run the hyprland installer (packages, fonts, login, PAM, ...)
 #   doctor     check dependencies, clones and installed paths
 #   list       show repo status (present / missing / dirty)
@@ -98,13 +98,37 @@ fetch_repo() {
     [[ -n "$src" ]] || src="$ORG/$name"
     url="https://github.com/$src.git"
     if [[ -d "$BASE/$name/.git" ]]; then
-        if [[ -n "$(git -C "$BASE/$name" status --porcelain 2>/dev/null)" ]]; then
-            warn "$name: local changes; keeping the checkout (its payload will not be deployed)"
+        local dirty=0 head remote stamp
+        [[ -n "$(git -C "$BASE/$name" status --porcelain 2>/dev/null)" ]] && dirty=1
         # Managed clones are read-only: fetch + hard reset also recovers from
         # upstream force-pushes, where `pull --ff-only` would fail forever.
-        elif git -C "$BASE/$name" fetch --depth 1 origin "$branch" --quiet 2>/dev/null \
-             && git -C "$BASE/$name" reset --hard FETCH_HEAD --quiet; then
-            ok "$name updated"
+        if git -C "$BASE/$name" fetch --depth 1 origin "$branch" --quiet 2>/dev/null; then
+            head="$(git -C "$BASE/$name" rev-parse HEAD 2>/dev/null || true)"
+            remote="$(git -C "$BASE/$name" rev-parse FETCH_HEAD 2>/dev/null || true)"
+            if [[ -n "$remote" && "$head" == "$remote" ]]; then
+                if [[ "$dirty" == 1 ]]; then
+                    warn "$name: local changes; remote unchanged; keeping checkout"
+                else
+                    ok "$name up to date"
+                fi
+            elif [[ "$dirty" == 1 ]]; then
+                stamp="$(date +%Y%m%d-%H%M%S)"
+                if git -C "$BASE/$name" stash push --include-untracked \
+                     -m "dots update $stamp" --quiet 2>/dev/null; then
+                    warn "$name: local changes stashed (recover: git -C $BASE/$name stash list/pop)"
+                    if git -C "$BASE/$name" reset --hard FETCH_HEAD --quiet; then
+                        ok "$name updated"
+                    else
+                        warn "$name: update failed; recover changes with: git -C $BASE/$name stash pop"
+                    fi
+                else
+                    warn "$name: local changes could not be stashed; keeping checkout"
+                fi
+            elif git -C "$BASE/$name" reset --hard FETCH_HEAD --quiet; then
+                ok "$name updated"
+            else
+                warn "$name: update failed; using the existing checkout"
+            fi
         elif [[ "$name" == "plugins" && "$branch" != "main" ]] \
              && git -C "$BASE/$name" fetch --depth 1 origin main --quiet 2>/dev/null \
              && git -C "$BASE/$name" checkout -B main FETCH_HEAD --quiet; then
@@ -343,6 +367,27 @@ WRAP
     esac
 }
 
+# Reload the running Quickshell instance after an update so a `dots update`
+# actually shows the new QML in the current session. Safe outside a graphical
+# session and when the shell is not running.
+reload_shell() {
+    local qsbin
+    [[ -n "${WAYLAND_DISPLAY:-}${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] || return 0
+    if command -v quickshell >/dev/null 2>&1; then
+        qsbin=quickshell
+    elif command -v qs >/dev/null 2>&1; then
+        qsbin=qs
+    else
+        return 0
+    fi
+    pgrep -f "Shell.qml" >/dev/null 2>&1 || return 0
+    if "$qsbin" -p "$QS/Shell.qml" ipc call main forceReload >/dev/null 2>&1; then
+        ok "shell reloaded"
+    else
+        warn "shell is running but could not be reloaded; restart: qs kill; qs -p $QS/Shell.qml &"
+    fi
+}
+
 cmd_install() {
     local c r n=0
     for c in git rsync; do
@@ -388,7 +433,8 @@ cmd_install() {
             printf 'LOCAL_VERSION="%s"\n' "$v" > "${XDG_STATE_HOME:-$HOME/.local/state}/equisdots-version"
         fi
     fi
-    ok "installed ($n/${#REPOS[@]} repos) — restart the shell (qs kill; qs -p $QS/Shell.qml &)"
+    ok "installed ($n/${#REPOS[@]} repos)"
+    reload_shell
 }
 
 # ── xwww: keep the wallpaper binaries at the pinned release ─────────────────
